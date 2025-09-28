@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Basic font setup */
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Manga reader specific styles */
+.manga-page {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+.manga-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: black;
+  min-height: 100vh;
+}
+
+.reading-rtl {
+  direction: rtl;
+}
+
+.reading-ltr {
+  direction: ltr;
+}
+
+.double-page-spread {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.page-navigation {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  color: white;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .manga-container {
+    padding: 0.5rem;
+  }
+  
+  .manga-page {
+    width: 100%;
+    height: auto;
+  }
+  
+  .page-navigation {
+    bottom: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+  }
+}

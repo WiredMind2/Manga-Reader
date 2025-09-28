@@ -1,0 +1,24 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+aiofiles
+aiosqlite
+Pillow
+python-multipart
+bcrypt==4.0.1
+passlib
+python-jose[cryptography]
+rarfile
+python-dotenv
+pydantic[email]
+pydantic-settings
+asyncpg
+psycopg2-binary
+
+# Testing dependencies
+pytest
+pytest-asyncio
+pytest-cov
+httpx
+factory-boy
