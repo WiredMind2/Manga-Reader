@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
 
+    # OCR & Translation
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3"  # User can override this via env var
+
     class Config:
         env_file = ".env"
         case_sensitive = True
