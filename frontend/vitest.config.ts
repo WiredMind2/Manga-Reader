@@ -7,7 +7,7 @@ export default defineConfig({
 		svelte({
 			preprocess: vitePreprocess(),
 			compilerOptions: {
-				// Don't use runes mode - use legacy mode for compatibility
+				// Empty compiler options - let svelte.config.js handle compatibility mode
 			}
 		})
 	],
