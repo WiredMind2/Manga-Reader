@@ -275,13 +275,13 @@
 
   // Keyboard navigation
   function handleKeydown(event: KeyboardEvent) {
-    // Don't interfere with OCR mode
-    if (ocrMode && (event.key === 'Escape' || event.key === 'o' || event.key === 'O')) {
-      if (event.key === 'Escape' || event.key === 'o' || event.key === 'O') {
+    // Handle OCR mode toggle specifically
+    if (event.key === 'Escape' || event.key === 'o' || event.key === 'O') {
+      if (ocrMode) {
         event.preventDefault()
         toggleOcrMode()
+        return
       }
-      return
     }
     
     if (ocrMode) return // Disable other shortcuts in OCR mode
@@ -631,7 +631,7 @@
   <!-- Translation Panel -->
   <TranslationPanel 
     bind:visible={showTranslationPanel}
-    {translationResult}
+    translation={translationResult}
     loading={ocrLoading}
     on:close={() => { showTranslationPanel = false; ocrMode = false }}
   />

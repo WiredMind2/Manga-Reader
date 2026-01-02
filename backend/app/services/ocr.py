@@ -2,16 +2,21 @@ import logging
 from PIL import Image
 import io
 from functools import lru_cache
+import threading
 
 logger = logging.getLogger(__name__)
 
 class OcrService:
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(OcrService, cls).__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super(OcrService, cls).__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
