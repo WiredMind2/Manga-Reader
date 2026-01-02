@@ -295,6 +295,19 @@ async def authenticated_client(client: AsyncClient, test_user: User) -> AsyncCli
     return client
 
 
+@pytest.fixture
+def mock_current_user() -> User:
+    """Create a mock current user for testing."""
+    user = User(
+        id=1,
+        username="testuser",
+        email="test@example.com",
+        hashed_password="hashed_password",
+        is_active=True
+    )
+    return user
+
+
 # Helper functions for test assertions
 def assert_manga_response(manga_data: dict, expected_manga: Manga):
     """Assert that manga response data matches expected manga."""
