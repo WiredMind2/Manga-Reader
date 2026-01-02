@@ -11,7 +11,9 @@ import type {
   LoginRequest,
   RegisterRequest,
   ReadingProgressUpdate,
-  UserPreference
+  UserPreference,
+  OcrRequest,
+  OcrResponse
 } from './types.js'
 
 const API_BASE_URL = 'http://localhost:8000/api'
@@ -333,6 +335,14 @@ class ApiClient {
     const endpoint = `/covers/${mangaId}`
     
     return `${this.baseURL}${endpoint}${query ? `?${query}` : ''}`
+  }
+
+  // OCR and Translation endpoints
+  async processOcr(request: OcrRequest): Promise<OcrResponse> {
+    return this.request<OcrResponse>('/ocr/process', {
+      method: 'POST',
+      body: JSON.stringify(request)
+    })
   }
 
   // Utility method to check if user is authenticated
