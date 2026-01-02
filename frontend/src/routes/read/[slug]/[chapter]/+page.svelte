@@ -206,14 +206,12 @@
     const actualWidth = Math.round(width * scaleX)
     const actualHeight = Math.round(height * scaleY)
     
-    // Construct the image path for backend
-    // This should match the page.file_path format
-    const imagePath = currentPage.file_path || getPageImageUrl(currentPage)
-    
     try {
       ocrLoading = true
       translationResult = await apiClient.processOcr({
-        image_path: imagePath,
+        manga_id: manga.id,
+        chapter_id: chapter.id,
+        page_id: currentPage.id,
         x: actualX,
         y: actualY,
         width: actualWidth,

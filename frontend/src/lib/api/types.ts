@@ -159,7 +159,9 @@ export interface RecentRead {
 
 // OCR and Translation types
 export interface OcrRequest {
-  image_path: string
+  manga_id: number
+  chapter_id: number
+  page_id: number
   x: number
   y: number
   width: number

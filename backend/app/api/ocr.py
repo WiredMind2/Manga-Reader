@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.services.ocr import get_ocr_service
 from app.services.translator import get_translator_service
 from app.api.auth import get_current_user
 from app.models import User
+from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +17,9 @@ router = APIRouter()
 
 class OcrRequest(BaseModel):
     """Request model for OCR processing"""
-    image_path: str = Field(..., description="Path to the manga page image")
+    manga_id: int = Field(..., description="Manga ID")
+    chapter_id: int = Field(..., description="Chapter ID")
+    page_id: int = Field(..., description="Page ID")
     x: int = Field(..., ge=0, description="X coordinate of selection box")
     y: int = Field(..., ge=0, description="Y coordinate of selection box")
     width: int = Field(..., gt=0, description="Width of selection box")
@@ -42,7 +46,8 @@ class OcrResponse(BaseModel):
 @router.post("/process", response_model=OcrResponse)
 async def process_ocr(
     request: OcrRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Process a selected region of a manga page:
@@ -51,13 +56,38 @@ async def process_ocr(
     3. Provide kanji breakdown and cultural notes
     """
     try:
+        # Get the page from database to retrieve file_path
+        from sqlalchemy import select
+        from app.models import Page, Chapter, Manga
+        
+        result = await db.execute(
+            select(Page, Chapter, Manga)
+            .join(Chapter, Page.chapter_id == Chapter.id)
+            .join(Manga, Chapter.manga_id == Manga.id)
+            .where(
+                Page.id == request.page_id,
+                Chapter.id == request.chapter_id,
+                Manga.id == request.manga_id
+            )
+        )
+        
+        page_data = result.first()
+        if not page_data:
+            raise HTTPException(
+                status_code=404,
+                detail="Page not found"
+            )
+        
+        page, chapter, manga = page_data
+        image_path = page.file_path
+        
         # Get OCR service
         ocr_service = get_ocr_service()
         
         # Extract text from the selected region
         logger.info(f"Processing OCR for region: ({request.x}, {request.y}, {request.width}, {request.height})")
         japanese_text = ocr_service.process_region(
-            request.image_path,
+            image_path,
             (request.x, request.y, request.width, request.height)
         )
         
