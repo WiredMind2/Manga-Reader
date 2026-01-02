@@ -169,11 +169,22 @@ class TestImageEndpoints:
         authenticated_client: AsyncClient, 
         test_manga: Manga
     ):
-        """Test getting cover image when manga has no cover."""
-        response = await authenticated_client.get(f"/api/images/covers/{test_manga.id}")
-        
-        assert response.status_code == 404
-        assert "Cover image not found" in response.json()["detail"]
+        """Test getting cover image when manga has no cover - falls back to first page."""
+        with patch('app.api.images.ImageOptimizer.optimize_image') as mock_optimize:
+            # Create a fake optimized image path
+            fake_path = Path(tempfile.mktemp(suffix='.webp'))
+            fake_path.touch()
+            mock_optimize.return_value = fake_path
+            
+            try:
+                response = await authenticated_client.get(f"/api/images/covers/{test_manga.id}")
+                
+                # Should fall back to first page of first chapter
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("image/")
+            finally:
+                if fake_path.exists():
+                    fake_path.unlink()
     
     async def test_get_cover_image_manga_not_found(
         self, 
@@ -362,8 +373,9 @@ class TestImageEndpoints:
         )
         page = result.scalar_one()
         
-        with patch('os.path.exists', return_value=True), \
-             patch('app.api.images.ImageOptimizer.optimize_image', side_effect=Exception("Processing error")):
+        # Mock optimize_image to raise an exception and make os.path.exists return False for the fallback
+        with patch('app.api.images.ImageOptimizer.optimize_image', side_effect=Exception("Processing error")), \
+             patch('os.path.exists', return_value=False):
             
             response = await authenticated_client.get(f"/api/images/{test_manga.id}/{page.chapter_id}/{page.id}")
             
