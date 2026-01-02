@@ -57,6 +57,8 @@ async def process_ocr(
     """
     try:
         # Get the page from database to retrieve file_path
+        # NOTE: This endpoint assumes all authenticated users have access to all manga.
+        # If user-specific access control is added in the future, add permission checks here.
         from sqlalchemy import select
         from app.models import Page, Chapter, Manga
         
@@ -75,7 +77,7 @@ async def process_ocr(
         if not page_data:
             raise HTTPException(
                 status_code=404,
-                detail="Page not found"
+                detail="Page not found or IDs do not match"
             )
         
         page, chapter, manga = page_data

@@ -273,13 +273,20 @@
 
   // Keyboard navigation
   function handleKeydown(event: KeyboardEvent) {
-    // Handle OCR mode toggle specifically
-    if (event.key === 'Escape' || event.key === 'o' || event.key === 'O') {
+    // Handle OCR mode toggle and exit
+    if (event.key === 'o' || event.key === 'O') {
+      event.preventDefault()
+      toggleOcrMode()
+      return
+    }
+    
+    if (event.key === 'Escape') {
       if (ocrMode) {
         event.preventDefault()
         toggleOcrMode()
         return
       }
+      // Otherwise, exit to manga list (handled below)
     }
     
     if (ocrMode) return // Disable other shortcuts in OCR mode
@@ -321,11 +328,6 @@
         break
       case 'r':
         toggleReadingDirection()
-        break
-      case 'o':
-      case 'O':
-        event.preventDefault()
-        toggleOcrMode()
         break
       case '+':
       case '=':
@@ -414,7 +416,7 @@
     on:keydown={(e) => e.key === 'Enter' && handleImageClick(e as any)}
     role="button"
     tabindex="0"
-    aria-label={ocrMode ? "OCR mode - select text area" : "Manga page - click left/right to navigate"}
+    aria-label={ocrMode ? "OCR mode - select text area" : "Manga page - click left or right to navigate"}
   >
     <div class="relative inline-block">
       {#if currentPage}
