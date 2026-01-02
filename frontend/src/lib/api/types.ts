@@ -65,6 +65,7 @@ export interface Page {
   filename: string
   width?: number
   height?: number
+  localUrl?: string
 }
 
 // Progress related types

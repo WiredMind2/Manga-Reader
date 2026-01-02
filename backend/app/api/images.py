@@ -181,7 +181,6 @@ async def get_page_image(
     height: Optional[int] = Query(None, ge=50, le=2560),
     quality: int = Query(85, ge=10, le=100),
     thumbnail: bool = Query(False),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get optimized page image"""
@@ -243,7 +242,6 @@ async def get_cover_image(
     width: Optional[int] = Query(None, ge=50, le=800),
     height: Optional[int] = Query(None, ge=50, le=1200),
     quality: int = Query(85, ge=10, le=100),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get manga cover image"""

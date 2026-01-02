@@ -12,11 +12,28 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python Debugger: Run",
+            "name": "Debug Backend",
             "type": "debugpy",
             "request": "launch",
-            "program": "backend/run.py",
-            "console": "integratedTerminal"
+            "program": "run.py",
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend"
+            }
+        },
+        {
+            "name": "Debug Backend (No Reload)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run.py",
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "UVICORN_RELOAD": "false"
+            },
+            "args": ["--no-reload"]
         }
     ]
 }

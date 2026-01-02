@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { apiClient } from '$lib/api/client'
+  import { offlineStorage } from '$lib/services/offline'
   import type { MangaDetail, Chapter, ReadingProgress } from '$lib/api/types'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
@@ -10,6 +11,8 @@
 
   let progress: ReadingProgress | null = null
   let loadingProgress = true
+  let downloadedChapters: Set<number> = new Set()
+  let downloadingChapters: Set<number> = new Set()
 
   $: manga = data.manga
   $: chapters = data.chapters
@@ -22,6 +25,57 @@
       console.error('Failed to load progress:', error)
     } finally {
       loadingProgress = false
+    }
+  }
+
+  async function checkDownloads() {
+    for (const chapter of chapters) {
+      const isDownloaded = await offlineStorage.isChapterDownloaded(chapter.id)
+      if (isDownloaded) {
+        downloadedChapters.add(chapter.id)
+      }
+    }
+    downloadedChapters = downloadedChapters
+  }
+
+  async function downloadChapter(chapter: Chapter, e: Event) {
+    e.stopPropagation()
+    if (downloadingChapters.has(chapter.id)) return
+    
+    downloadingChapters.add(chapter.id)
+    downloadingChapters = downloadingChapters
+
+    try {
+      const pages = await apiClient.getChapterPages(manga.id, chapter.id)
+      await offlineStorage.saveManga(manga)
+      await offlineStorage.saveChapter({ ...chapter, manga_id: manga.id, downloaded: true })
+      
+      for (const page of pages) {
+        const imageUrl = apiClient.getPageImageUrl(manga.id, chapter.id, page.id)
+        const response = await fetch(imageUrl)
+        const blob = await response.blob()
+        await offlineStorage.savePage(chapter.id, page.page_number - 1, blob)
+      }
+      
+      downloadedChapters.add(chapter.id)
+      downloadedChapters = downloadedChapters
+    } catch (error) {
+      console.error('Download failed:', error)
+      alert('Download failed')
+    } finally {
+      downloadingChapters.delete(chapter.id)
+      downloadingChapters = downloadingChapters
+    }
+  }
+
+  async function removeDownload(chapterId: number, e: Event) {
+    e.stopPropagation()
+    try {
+      await offlineStorage.deleteChapter(chapterId)
+      downloadedChapters.delete(chapterId)
+      downloadedChapters = downloadedChapters
+    } catch (error) {
+      console.error('Failed to remove download:', error)
     }
   }
 
@@ -61,6 +115,7 @@
 
   onMount(() => {
     loadProgress()
+    checkDownloads()
   })
 </script>
 
@@ -267,6 +322,27 @@
                 <span class="text-sm font-medium">Reading</span>
               </div>
             {/if}
+
+            <!-- Download button -->
+            <button
+              class="p-2 hover:bg-muted rounded-full ml-2 transition-colors z-10 relative"
+              on:click={(e) => downloadedChapters.has(chapter.id) ? removeDownload(chapter.id, e) : downloadChapter(chapter, e)}
+              title={downloadedChapters.has(chapter.id) ? "Remove download" : "Download chapter"}
+            >
+              {#if downloadingChapters.has(chapter.id)}
+                 <div class="h-5 w-5 flex items-center justify-center">
+                   <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                 </div>
+              {:else if downloadedChapters.has(chapter.id)}
+                 <svg class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                 </svg>
+              {:else}
+                 <svg class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                 </svg>
+              {/if}
+            </button>
 
             <!-- Arrow icon -->
             <svg class="h-5 w-5 text-muted-foreground ml-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

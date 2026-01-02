@@ -1,4 +1,5 @@
 import { browser } from '$app/environment'
+import { offlineStorage } from '../services/offline'
 import type {
   User,
   Manga,
@@ -156,7 +157,23 @@ class ApiClient {
     const query = searchParams.toString()
     const endpoint = `/manga${query ? `?${query}` : ''}`
     
-    return this.request<PaginatedResponse<Manga>>(endpoint)
+    try {
+      return await this.request<PaginatedResponse<Manga>>(endpoint)
+    } catch (error) {
+      try {
+        const mangas = await offlineStorage.getAllMangas();
+        return {
+          items: mangas,
+          total: mangas.length,
+          page: 1,
+          size: mangas.length,
+          pages: 1
+        };
+      } catch (e) {
+        console.error('Offline storage error:', e);
+      }
+      throw error;
+    }
   }
 
   async getMangaById(id: number): Promise<MangaDetail> {
@@ -164,15 +181,59 @@ class ApiClient {
   }
 
   async getMangaBySlug(slug: string): Promise<MangaDetail> {
-    return this.request<MangaDetail>(`/manga/slug/${slug}`)
+    try {
+      return await this.request<MangaDetail>(`/manga/slug/${slug}`)
+    } catch (error) {
+      try {
+        const manga = await offlineStorage.getManga(slug);
+        if (manga) return manga;
+      } catch (e) {
+        console.error('Offline storage error:', e);
+      }
+      throw error;
+    }
   }
 
   async getMangaChapters(mangaId: number): Promise<Chapter[]> {
-    return this.request<Chapter[]>(`/manga/${mangaId}/chapters`)
+    try {
+      return await this.request<Chapter[]>(`/manga/${mangaId}/chapters`)
+    } catch (error) {
+      try {
+        const chapters = await offlineStorage.getChaptersForManga(mangaId);
+        if (chapters && chapters.length > 0) return chapters;
+      } catch (e) {
+        console.error('Offline storage error:', e);
+      }
+      throw error;
+    }
   }
 
   async getChapterPages(mangaId: number, chapterId: number): Promise<Page[]> {
-    return this.request<Page[]>(`/manga/${mangaId}/chapters/${chapterId}/pages`)
+    try {
+      return await this.request<Page[]>(`/manga/${mangaId}/chapters/${chapterId}/pages`)
+    } catch (error) {
+      try {
+        const chapter = await offlineStorage.getChapter(chapterId);
+        if (chapter) {
+           const pages: Page[] = [];
+           for (let i = 0; i < chapter.page_count; i++) {
+             const blob = await offlineStorage.getPage(chapterId, i);
+             if (blob) {
+               pages.push({
+                 id: i,
+                 page_number: i + 1,
+                 filename: `page_${i}.jpg`,
+                 localUrl: URL.createObjectURL(blob)
+               });
+             }
+           }
+           if (pages.length > 0) return pages;
+        }
+      } catch (e) {
+        console.error('Offline storage error:', e);
+      }
+      throw error;
+    }
   }
 
   async scanMangaLibrary(): Promise<{ message: string; manga_count: number }> {

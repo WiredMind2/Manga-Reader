@@ -148,6 +148,7 @@
 
   // Get page image URL
   function getPageImageUrl(page: Page) {
+    if (page.localUrl) return page.localUrl;
     return apiClient.getPageImageUrl(manga.id, chapter.id, page.id)
   }
 

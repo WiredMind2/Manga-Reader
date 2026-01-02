@@ -2,6 +2,10 @@ from pydantic_settings import BaseSettings
 from typing import List
 import json
 import os
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -44,8 +48,17 @@ class Settings(BaseSettings):
 
     def _load_from_config_file(self):
         """Load settings from config file if it exists"""
-        config_path = os.path.join("config", "settings.json")
-        if os.path.exists(config_path):
+        # Try to find config file relative to project root
+        # backend/app/core/config.py -> backend/app/core -> backend/app -> backend -> root
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parents[3]
+        config_path = project_root / "config" / "settings.json"
+        
+        if not config_path.exists():
+             # Fallback to CWD
+             config_path = Path("config/settings.json")
+
+        if config_path.exists():
             try:
                 with open(config_path, 'r') as f:
                     config_data = json.load(f)
@@ -86,7 +99,9 @@ class Settings(BaseSettings):
                         setattr(self, attr_name, value)
                         
             except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-                print(f"Warning: Could not load config file: {e}")
+                logger.error(f"Warning: Could not load config file: {e}")
+        else:
+            logger.warning(f"Config file not found at {config_path}")
 
 
 settings = Settings()
