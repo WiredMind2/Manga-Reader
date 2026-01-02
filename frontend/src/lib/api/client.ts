@@ -1,15 +1,16 @@
 import { browser } from '$app/environment'
-import type { 
-  User, 
-  Manga, 
-  MangaDetail, 
-  Chapter, 
-  Page, 
-  ReadingProgress, 
+import type {
+  User,
+  Manga,
+  MangaDetail,
+  Chapter,
+  Page,
+  ReadingProgress,
   PaginatedResponse,
   LoginRequest,
   RegisterRequest,
-  ReadingProgressUpdate
+  ReadingProgressUpdate,
+  UserPreference
 } from './types.js'
 
 const API_BASE_URL = 'http://localhost:8000/api'
@@ -207,6 +208,22 @@ class ApiClient {
 
   async getRecentReads(limit: number = 10): Promise<any> {
     return this.request(`/progress/recent/${limit}`)
+  }
+
+  // Preferences endpoints
+  async getPreferences(): Promise<UserPreference> {
+    return this.request<UserPreference>('/preferences')
+  }
+
+  async updatePreferences(preferences: Partial<UserPreference>): Promise<UserPreference> {
+    return this.request<UserPreference>('/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences)
+    })
+  }
+
+  async deletePreferences(): Promise<void> {
+    await this.request('/preferences', { method: 'DELETE' })
   }
 
   // Image endpoints

@@ -60,7 +60,7 @@ class MangaScanner:
             
             if not manga:
                 # Create new manga entry
-                slug = self._create_slug(manga_path.name)
+                slug = await self._get_unique_slug(self._create_slug(manga_path.name), db)
                 manga = Manga(
                     title=manga_path.name,
                     slug=slug,
@@ -89,6 +89,7 @@ class MangaScanner:
             
         except Exception as e:
             logger.error(f"Error scanning manga folder {manga_path}: {e}")
+            await db.rollback()
             return None
     
     async def _scan_archive_manga(self, archive_path: Path, db: AsyncSession) -> Optional[Manga]:
@@ -101,7 +102,7 @@ class MangaScanner:
             
             if not manga:
                 title = archive_path.stem
-                slug = self._create_slug(title)
+                slug = await self._get_unique_slug(self._create_slug(title), db)
                 manga = Manga(
                     title=title,
                     slug=slug,
@@ -125,26 +126,72 @@ class MangaScanner:
             
         except Exception as e:
             logger.error(f"Error scanning archive {archive_path}: {e}")
+            await db.rollback()
             return None
     
+    def _is_chapter_folder(self, folder_path: Path) -> bool:
+        """Check if a folder contains images (is a chapter)"""
+        try:
+            for item in folder_path.iterdir():
+                if item.is_file() and item.suffix.lower()[1:] in self.supported_images:
+                    return True
+        except Exception:
+            pass
+        return False
+
     async def _scan_chapters(self, manga: Manga, manga_path: Path, db: AsyncSession):
         """Scan chapters in a manga folder"""
-        chapter_folders = []
+        potential_chapters = []
         
+        # Check root
+        if self._is_chapter_folder(manga_path):
+             potential_chapters.append(manga_path)
+
+        # Check children
         for item in manga_path.iterdir():
             if item.is_dir():
-                chapter_folders.append(item)
+                if self._is_chapter_folder(item):
+                    potential_chapters.append(item)
+                else:
+                    # Check subfolders (depth 2)
+                    for subitem in item.iterdir():
+                        if subitem.is_dir() and self._is_chapter_folder(subitem):
+                            potential_chapters.append(subitem)
+                        elif subitem.is_file() and subitem.suffix.lower()[1:] in self.supported_archives:
+                            potential_chapters.append(subitem)
+            
             elif item.suffix.lower()[1:] in self.supported_archives:
-                # Archive file as chapter
-                chapter_folders.append(item)
+                potential_chapters.append(item)
         
-        # Sort chapters naturally (handles Chapter 1, Chapter 2, Chapter 10 correctly)
-        chapter_folders.sort(key=lambda x: self._natural_sort_key(x.name))
+        # Filter potential chapters
+        # If we have multiple chapters, and one of them is root, check if root only contains cover/metadata
+        if len(potential_chapters) > 1 and manga_path in potential_chapters:
+            # Check if root images are just covers
+            root_images = [f for f in manga_path.iterdir() if f.is_file() and f.suffix.lower()[1:] in self.supported_images]
+            non_cover_images = [f for f in root_images if 'cover' not in f.name.lower() and 'folder' not in f.name.lower()]
+            
+            if len(non_cover_images) == 0:
+                potential_chapters.remove(manga_path)
         
-        for chapter_path in chapter_folders:
-            await self._process_chapter(manga, chapter_path, db)
+        # Sort chapters naturally by path to keep volumes together
+        potential_chapters.sort(key=lambda x: self._natural_sort_key(str(x)))
+        
+        for chapter_path in potential_chapters:
+            title = None
+            if chapter_path == manga_path:
+                title = "Chapter 1"
+            elif chapter_path.parent != manga_path:
+                 # Nested, e.g. Vol 1/Ch 1
+                 try:
+                     rel = chapter_path.relative_to(manga_path)
+                     if len(rel.parts) > 1:
+                        title = f"{rel.parts[0]} - {rel.parts[1]}"
+                 except ValueError:
+                     pass
+
+            await self._process_chapter(manga, chapter_path, db, title_override=title)
     
-    async def _process_chapter(self, manga: Manga, chapter_path: Path, db: AsyncSession):
+    async def _process_chapter(self, manga: Manga, chapter_path: Path, db: AsyncSession, title_override: Optional[str] = None):
         """Process a single chapter (folder or archive)"""
         try:
             # Check if chapter already exists
@@ -160,11 +207,16 @@ class MangaScanner:
                 # Extract chapter number from folder name
                 chapter_num = self._extract_chapter_number(chapter_path.name)
                 if chapter_num is None:
-                    chapter_num = float(abs(hash(chapter_path.name)) % 10000)
+                    # Try to extract from title override if available
+                    if title_override:
+                         chapter_num = self._extract_chapter_number(title_override)
+                    
+                    if chapter_num is None:
+                        chapter_num = float(abs(hash(chapter_path.name)) % 10000)
                 
                 chapter = Chapter(
                     manga_id=manga.id,
-                    title=chapter_path.name,
+                    title=title_override or chapter_path.name,
                     chapter_number=chapter_num,
                     folder_name=chapter_path.name,
                     folder_path=str(chapter_path)
@@ -189,6 +241,7 @@ class MangaScanner:
             
         except Exception as e:
             logger.error(f"Error processing chapter {chapter_path}: {e}")
+            await db.rollback()
     
     async def _scan_folder_pages(self, chapter: Chapter, chapter_path: Path, db: AsyncSession):
         """Scan pages in a chapter folder"""

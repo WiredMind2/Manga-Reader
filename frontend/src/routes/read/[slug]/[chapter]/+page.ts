@@ -4,48 +4,47 @@ import { error } from '@sveltejs/kit';
 
 export const load: PageLoad = async ({ params }) => {
   try {
-    const [manga, chapters] = await Promise.all([
-      apiClient.getMangaBySlug(params.slug),
-      apiClient.getMangaChapters(parseInt(params.slug) || 0).catch(() => [])
-    ]);
-
-    // If getMangaBySlug fails, try by ID
-    let finalManga = manga;
-    let finalChapters = chapters;
-
-    if (!manga && params.slug.match(/^\d+$/)) {
-      try {
-        finalManga = await apiClient.getMangaById(parseInt(params.slug));
-        finalChapters = await apiClient.getMangaChapters(finalManga.id);
-      } catch {
+    let manga;
+    
+    // Try to fetch by slug first
+    try {
+      manga = await apiClient.getMangaBySlug(params.slug);
+    } catch (e) {
+      // If slug lookup fails and params.slug is a number, try by ID
+      if (params.slug.match(/^\d+$/)) {
+        try {
+          manga = await apiClient.getMangaById(parseInt(params.slug));
+        } catch {
+          throw error(404, 'Manga not found');
+        }
+      } else {
         throw error(404, 'Manga not found');
       }
     }
 
-    if (!finalManga) {
-      throw error(404, 'Manga not found');
-    }
+    // Fetch chapters using the manga ID
+    const chapters = await apiClient.getMangaChapters(manga.id).catch(() => []);
 
     const chapterId = parseInt(params.chapter);
-    const chapter = finalChapters.find((c: any) => c.id === chapterId);
+    const chapter = chapters.find((c: any) => c.id === chapterId);
     
     if (!chapter) {
       throw error(404, 'Chapter not found');
     }
 
-    const pages = await apiClient.getChapterPages(finalManga.id, chapterId);
+    const pages = await apiClient.getChapterPages(manga.id, chapterId);
 
     return {
-      manga: finalManga,
-      chapters: finalChapters,
+      manga,
+      chapters,
       chapter,
       pages
     };
   } catch (err: any) {
     console.error('Failed to load chapter:', err);
-    if (err.status === 404) {
-      throw err;
+    if ((err as any)?.status === 404 || err?.body?.message === 'Not Found') {
+      throw error(404, 'Chapter not found');
     }
-    throw error(500, 'Failed to load chapter');
+    throw err;
   }
 };

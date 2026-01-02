@@ -4,24 +4,13 @@
   import { page } from '$app/stores'
   import { goto } from '$app/navigation'
   import { authStore, user, isAuthenticated, isLoading } from '$lib/stores/auth'
-  
+  import { theme } from '$lib/stores/theme'
+
   let { children } = $props();
-  
-  // Theme management
-  let isDark = $state(false)
+
   let showUserMenu = $state(false)
   
   onMount(() => {
-    // Check for saved theme or default to dark
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme) {
-      isDark = savedTheme === 'dark'
-    } else {
-      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    }
-    
-    updateTheme()
-    
     // Close user menu when clicking outside
     const handleClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement
@@ -29,23 +18,22 @@
         showUserMenu = false
       }
     }
-    
+
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   })
   
-  function updateTheme() {
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    localStorage.setItem('theme', isDark ? 'dark' : 'light')
-  }
-  
   function toggleTheme() {
-    isDark = !isDark
-    updateTheme()
+    const current = $theme
+    let next: 'dark' | 'light' | 'auto'
+    if (current === 'dark') {
+      next = 'light'
+    } else if (current === 'light') {
+      next = 'auto'
+    } else {
+      next = 'dark'
+    }
+    theme.setTheme(next)
   }
 
   function handleLogout() {
@@ -60,6 +48,9 @@
 
   // Check if current page is auth page
   let isAuthPage = $derived($page.route.id?.startsWith('/auth'))
+
+  // Determine if effectively dark for icon
+  let isDark = $derived($theme === 'dark' || ($theme === 'auto' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches))
 </script>
 
 <div class="min-h-screen bg-background text-foreground">

@@ -3,25 +3,38 @@
   import { goto } from '$app/navigation'
   import { user, authStore, isAuthenticated } from '$lib/stores/auth'
   import { apiClient } from '$lib/api/client'
+  import { theme } from '$lib/stores/theme'
+  import type { UserPreference } from '$lib/api/types'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
   let loading = false
   let scanningLibrary = false
   let scanResult = ''
-  
-  // User preferences (you would expand this to load from backend)
-  let preferences = {
-    theme: 'dark',
-    default_reading_direction: 'rtl' as 'rtl' | 'ltr' | 'ttb',
-    auto_next_chapter: true,
-    page_fit_mode: 'fit-width' as 'fit-width' | 'fit-height' | 'original',
-    items_per_page: 20
-  }
+  let preferences: UserPreference | null = null
 
   // Redirect if not authenticated
   $: if (!$isAuthenticated) {
     goto('/auth/login')
   }
+
+  onMount(async () => {
+    try {
+      preferences = await apiClient.getPreferences()
+      theme.setTheme(preferences.theme)
+    } catch (error: any) {
+      // If no preferences exist, create default
+      preferences = {
+        id: 0,
+        user_id: $user?.id || 0,
+        theme: 'auto',
+        default_reading_direction: 'rtl',
+        auto_next_chapter: true,
+        page_fit_mode: 'fit-width',
+        items_per_page: 20
+      }
+      theme.setTheme(preferences.theme)
+    }
+  })
 
   async function scanMangaLibrary() {
     scanningLibrary = true
@@ -38,8 +51,19 @@
   }
 
   async function savePreferences() {
-    // This would save to backend - for now just show success
-    alert('Preferences saved successfully!')
+    if (!preferences) return
+
+    loading = true
+    try {
+      preferences = await apiClient.updatePreferences(preferences)
+      theme.setTheme(preferences.theme)
+      // Could show a success message, but task says remove alert
+    } catch (error: any) {
+      console.error('Failed to save preferences:', error)
+      // Could show error message
+    } finally {
+      loading = false
+    }
   }
 
   function handleLogout() {
@@ -98,88 +122,100 @@
   <!-- Reading preferences -->
   <div class="border border-border rounded-lg p-6 space-y-6">
     <h2 class="text-xl font-semibold">Reading Preferences</h2>
-    
-    <div class="space-y-4">
-      <!-- Theme -->
-      <div>
-        <label for="theme-select" class="block text-sm font-medium mb-2">Theme</label>
-        <select 
-          id="theme-select"
-          bind:value={preferences.theme}
-          class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
-        >
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="auto">Auto (System)</option>
-        </select>
-      </div>
 
-      <!-- Default reading direction -->
-      <div>
-        <label for="direction-select" class="block text-sm font-medium mb-2">Default Reading Direction</label>
-        <select 
-          id="direction-select"
-          bind:value={preferences.default_reading_direction}
-          class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
-        >
-          <option value="rtl">Right to Left (Japanese Manga)</option>
-          <option value="ltr">Left to Right (Western Comics)</option>
-          <option value="ttb">Top to Bottom (Korean Manhwa)</option>
-        </select>
-      </div>
-
-      <!-- Page fit mode -->
-      <div>
-        <label for="fit-select" class="block text-sm font-medium mb-2">Default Page Fit</label>
-        <select 
-          id="fit-select"
-          bind:value={preferences.page_fit_mode}
-          class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
-        >
-          <option value="fit-width">Fit to Width</option>
-          <option value="fit-height">Fit to Height</option>
-          <option value="original">Original Size</option>
-        </select>
-      </div>
-
-      <!-- Auto next chapter -->
-      <div class="flex items-center justify-between">
+    {#if preferences}
+      <div class="space-y-4">
+        <!-- Theme -->
         <div>
-          <label for="auto-next" class="text-sm font-medium">Auto-advance to Next Chapter</label>
-          <div class="text-xs text-muted-foreground">Automatically go to the next chapter when reaching the last page</div>
+          <label for="theme-select" class="block text-sm font-medium mb-2">Theme</label>
+          <select
+            id="theme-select"
+            bind:value={preferences.theme}
+            class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="auto">Auto (System)</option>
+          </select>
         </div>
-        <input 
-          id="auto-next"
-          type="checkbox" 
-          bind:checked={preferences.auto_next_chapter}
-          class="h-4 w-4 text-primary focus:ring-primary border-border rounded"
-        >
+
+        <!-- Default reading direction -->
+        <div>
+          <label for="direction-select" class="block text-sm font-medium mb-2">Default Reading Direction</label>
+          <select
+            id="direction-select"
+            bind:value={preferences.default_reading_direction}
+            class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+          >
+            <option value="rtl">Right to Left (Japanese Manga)</option>
+            <option value="ltr">Left to Right (Western Comics)</option>
+            <option value="ttb">Top to Bottom (Korean Manhwa)</option>
+          </select>
+        </div>
+
+        <!-- Page fit mode -->
+        <div>
+          <label for="fit-select" class="block text-sm font-medium mb-2">Default Page Fit</label>
+          <select
+            id="fit-select"
+            bind:value={preferences.page_fit_mode}
+            class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+          >
+            <option value="fit-width">Fit to Width</option>
+            <option value="fit-height">Fit to Height</option>
+            <option value="original">Original Size</option>
+          </select>
+        </div>
+
+        <!-- Auto next chapter -->
+        <div class="flex items-center justify-between">
+          <div>
+            <label for="auto-next" class="text-sm font-medium">Auto-advance to Next Chapter</label>
+            <div class="text-xs text-muted-foreground">Automatically go to the next chapter when reaching the last page</div>
+          </div>
+          <input
+            id="auto-next"
+            type="checkbox"
+            bind:checked={preferences.auto_next_chapter}
+            class="h-4 w-4 text-primary focus:ring-primary border-border rounded"
+          >
+        </div>
+
+        <!-- Items per page -->
+        <div>
+          <label for="items-select" class="block text-sm font-medium mb-2">Manga per Page</label>
+          <select
+            id="items-select"
+            bind:value={preferences.items_per_page}
+            class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
       </div>
 
-      <!-- Items per page -->
-      <div>
-        <label for="items-select" class="block text-sm font-medium mb-2">Manga per Page</label>
-        <select 
-          id="items-select"
-          bind:value={preferences.items_per_page}
-          class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+      <div class="pt-4">
+        <button
+          on:click={savePreferences}
+          disabled={loading}
+          class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
-          <option value={10}>10</option>
-          <option value={20}>20</option>
-          <option value={50}>50</option>
-          <option value={100}>100</option>
-        </select>
+          {#if loading}
+            <LoadingSpinner size="sm" showMessage={false} />
+            <span class="ml-2">Saving...</span>
+          {:else}
+            Save Preferences
+          {/if}
+        </button>
       </div>
-    </div>
-
-    <div class="pt-4">
-      <button 
-        on:click={savePreferences}
-        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-      >
-        Save Preferences
-      </button>
-    </div>
+    {:else}
+      <div class="flex justify-center py-8">
+        <LoadingSpinner />
+      </div>
+    {/if}
   </div>
 
   <!-- Library management -->
