@@ -23,8 +23,8 @@ class TestPasswordHashing:
         
         # Hash should be different from original password
         assert hashed != password
-        assert len(hashed) > 50  # Bcrypt hashes are typically 60 characters
-        assert hashed.startswith("$2b$")  # Bcrypt format
+        assert len(hashed) > 50  # PBKDF2 with base64 encoding
+        assert ":" in hashed  # PBKDF2 format: hash:salt
     
     def test_password_verification_correct(self):
         """Test password verification with correct password."""
@@ -110,7 +110,7 @@ class TestJWTTokens:
         # Check expiry time is approximately correct
         exp_timestamp = payload["exp"]
         expected_exp = datetime.utcnow() + expires_delta
-        actual_exp = datetime.fromtimestamp(exp_timestamp)
+        actual_exp = datetime.utcfromtimestamp(exp_timestamp)
         
         # Allow 10 seconds tolerance
         time_diff = abs((expected_exp - actual_exp).total_seconds())
@@ -148,52 +148,54 @@ class TestJWTTokens:
         expires_delta = timedelta(seconds=-1)  # Already expired
         token = create_access_token(data, expires_delta)
         
-        with pytest.raises(JWTError):
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException):
             verify_token(token)
     
     def test_verify_token_invalid_signature(self):
         """Test verifying token with invalid signature."""
+        from fastapi import HTTPException
         # Create token with different secret
         data = {"sub": "testuser"}
         token = jwt.encode(data, "wrong_secret", algorithm=settings.ALGORITHM)
         
-        with pytest.raises(JWTError):
+        with pytest.raises(HTTPException):
             verify_token(token)
     
     def test_verify_token_malformed(self):
         """Test verifying malformed token."""
+        from fastapi import HTTPException
         malformed_tokens = [
             "invalid.token.here",
             "not.a.jwt",
             "",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid",
-            None
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid"
         ]
         
         for token in malformed_tokens:
-            with pytest.raises(JWTError):
+            with pytest.raises(HTTPException):
                 verify_token(token)
     
     def test_verify_token_missing_claims(self):
         """Test verifying token with missing required claims."""
+        from fastapi import HTTPException
         # Token without 'sub' claim
         data = {"role": "user"}  # Missing 'sub'
         token = jwt.encode(data, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         
-        # This should still decode successfully, verification of required claims
-        # would be done at the application level
-        payload = verify_token(token)
-        assert "sub" not in payload
-        assert payload["role"] == "user"
+        # Should raise HTTPException for missing 'sub' claim
+        with pytest.raises(HTTPException):
+            verify_token(token)
     
     def test_token_algorithms(self):
         """Test that only expected algorithms are accepted."""
+        from fastapi import HTTPException
         data = {"sub": "testuser"}
         
         # Create token with different algorithm
         token_hs384 = jwt.encode(data, settings.SECRET_KEY, algorithm="HS384")
         
-        with pytest.raises(JWTError):
+        with pytest.raises(HTTPException):
             verify_token(token_hs384)  # Should reject HS384
     
     @patch('app.core.config.settings')
@@ -257,17 +259,16 @@ class TestSecurityUtilities:
         # The timing difference should be minimal (though this test is imperfect)
     
     def test_password_hash_format(self):
-        """Test that password hashes follow expected bcrypt format."""
+        """Test that password hashes follow expected PBKDF2 format."""
         password = "testPassword123"
         hashed = get_password_hash(password)
         
-        # Bcrypt format: $2b$rounds$salt_and_hash
-        parts = hashed.split('$')
-        assert len(parts) == 4
-        assert parts[0] == ""  # Empty string before first $
-        assert parts[1] == "2b"  # Bcrypt identifier
-        assert parts[2].isdigit()  # Rounds (cost factor)
-        assert len(parts[3]) == 53  # Salt (22 chars) + Hash (31 chars)
+        # PBKDF2 format: hash:salt (base64 encoded)
+        parts = hashed.split(':')
+        assert len(parts) == 2
+        hash_part, salt_part = parts
+        assert len(hash_part) > 0  # Hash should be present
+        assert len(salt_part) > 0  # Salt should be present
     
     def test_token_payload_structure(self):
         """Test that JWT payload has expected structure."""

@@ -162,7 +162,7 @@ class TestFullUserWorkflow:
         # Get a page from test data
         from sqlalchemy import select
         result = await test_db.execute(
-            select(Page).join(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Page).join(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         page = result.scalar_one()
         
@@ -177,12 +177,12 @@ class TestFullUserWorkflow:
             
             try:
                 # Test image serving
-                response = await authenticated_client.get(f"/api/images/{page.id}")
+                response = await authenticated_client.get(f"/api/images/{test_manga.id}/{page.chapter_id}/{page.id}")
                 assert response.status_code == 200
                 assert response.headers["content-type"].startswith("image/")
                 
                 # Test image with optimization parameters
-                response = await authenticated_client.get(f"/api/images/{page.id}?width=800&height=600")
+                response = await authenticated_client.get(f"/api/images/{test_manga.id}/{page.chapter_id}/{page.id}?width=800&height=600")
                 assert response.status_code == 200
                 
                 # Verify optimization was called with correct parameters
@@ -214,7 +214,7 @@ class TestFullUserWorkflow:
         # Get chapter for progress tracking
         from sqlalchemy import select
         result = await test_db.execute(
-            select(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         chapter = result.scalar_one()
         
@@ -253,10 +253,12 @@ class TestMangaScanningIntegration:
     async def test_complete_manga_scanning_workflow(self, authenticated_client: AsyncClient, test_db: AsyncSession, temp_manga_dir: Path):
         """Test complete manga scanning and database population."""
         from unittest.mock import patch
-        from app.services.manga_scanner import MangaScanner
+        from app.services.manga_scanner import manga_scanner
         
         # Mock scanner to use temp directory
-        with patch.object(MangaScanner, 'manga_dir', temp_manga_dir):
+        original_dir = manga_scanner.manga_dir
+        manga_scanner.manga_dir = temp_manga_dir
+        try:
             # Trigger scan
             response = await authenticated_client.get("/api/manga/scan")
             assert response.status_code == 200
@@ -268,6 +270,8 @@ class TestMangaScanningIntegration:
             assert response.status_code == 200
             manga_list = response.json()
             assert manga_list["total"] > 0
+        finally:
+            manga_scanner.manga_dir = original_dir
             
             # Get first manga and verify it has chapters
             manga = manga_list["items"][0]
@@ -318,7 +322,7 @@ class TestErrorHandlingWorkflows:
         assert response.status_code == 404
         
         # Non-existent page image
-        response = await authenticated_client.get("/api/images/99999")
+        response = await authenticated_client.get("/api/images/99999/99999/99999")
         assert response.status_code == 404
     
     async def test_validation_error_workflow(self, authenticated_client: AsyncClient, test_manga: Manga):

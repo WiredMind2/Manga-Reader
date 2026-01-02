@@ -32,16 +32,20 @@ class MangaScanner:
         manga_list = []
         
         for item in self.manga_dir.iterdir():
-            if item.is_dir():
-                # Folder-based manga
-                manga = await self._scan_folder_manga(item, db)
-                if manga:
-                    manga_list.append(manga)
-            elif item.suffix.lower()[1:] in self.supported_archives:
-                # Archive-based manga
-                manga = await self._scan_archive_manga(item, db)
-                if manga:
-                    manga_list.append(manga)
+            try:
+                if item.is_dir():
+                    # Folder-based manga
+                    manga = await self._scan_folder_manga(item, db)
+                    if manga:
+                        manga_list.append(manga)
+                elif item.suffix.lower()[1:] in self.supported_archives:
+                    # Archive-based manga
+                    manga = await self._scan_archive_manga(item, db)
+                    if manga:
+                        manga_list.append(manga)
+            except Exception as e:
+                logger.error(f"Error scanning {item}: {e}")
+                continue
         
         return manga_list
     
@@ -155,6 +159,8 @@ class MangaScanner:
             if not chapter:
                 # Extract chapter number from folder name
                 chapter_num = self._extract_chapter_number(chapter_path.name)
+                if chapter_num is None:
+                    chapter_num = float(abs(hash(chapter_path.name)) % 10000)
                 
                 chapter = Chapter(
                     manga_id=manga.id,
@@ -327,6 +333,8 @@ class MangaScanner:
             
             if not chapter:
                 chapter_num = self._extract_chapter_number(chapter_folder) if chapter_folder != 'root' else float(i)
+                if chapter_num is None:
+                    chapter_num = float(abs(hash(chapter_folder)) % 10000)
                 
                 chapter = Chapter(
                     manga_id=manga.id,
@@ -473,6 +481,13 @@ class MangaScanner:
                 manga.year = metadata.get('year')
                 manga.genres = json.dumps(metadata.get('genres', []))
                 
+                # Handle cover image from metadata
+                if 'cover_image' in metadata:
+                    cover_file = metadata['cover_image']
+                    cover_path = manga_path / cover_file
+                    if cover_path.exists():
+                        manga.cover_image = cover_file
+                
             except Exception as e:
                 logger.warning(f"Error loading metadata for {manga_path}: {e}")
         
@@ -481,7 +496,7 @@ class MangaScanner:
         for cover_file in cover_files:
             cover_path = manga_path / cover_file
             if cover_path.exists():
-                manga.cover_image = str(cover_path)
+                manga.cover_image = cover_file  # Store relative path
                 break
     
     def _create_slug(self, title: str) -> str:
@@ -490,7 +505,21 @@ class MangaScanner:
         slug = re.sub(r'[-\s]+', '-', slug)
         return slug.strip('-')
     
-    def _extract_chapter_number(self, folder_name: str) -> float:
+    async def _get_unique_slug(self, base_slug: str, db: AsyncSession) -> str:
+        """Generate unique slug by appending number if needed"""
+        slug = base_slug
+        counter = 1
+        
+        while True:
+            result = await db.execute(select(Manga).where(Manga.slug == slug))
+            existing = result.scalar_one_or_none()
+            if not existing:
+                return slug
+            
+            counter += 1
+            slug = f"{base_slug}-{counter}"
+    
+    def _extract_chapter_number(self, folder_name: str) -> Optional[float]:
         """Extract chapter number from folder name"""
         # Look for patterns like "Chapter 1", "Ch 1.5", "001", etc.
         patterns = [
@@ -508,8 +537,8 @@ class MangaScanner:
                 except ValueError:
                     continue
         
-        # Fallback: use hash of folder name
-        return float(abs(hash(folder_name)) % 10000)
+        # Return None if no valid chapter number found
+        return None
     
     def _natural_sort_key(self, text: str) -> List:
         """Natural sorting key for proper ordering of chapters and pages"""
@@ -517,6 +546,40 @@ class MangaScanner:
             return int(text_part) if text_part.isdigit() else text_part.lower()
         
         return [convert(c) for c in re.split(r'(\d+)', text)]
+    
+    def _natural_sort(self, file_list: List[str]) -> List[str]:
+        """Natural sort a list of files"""
+        return sorted(file_list, key=self._natural_sort_key)
+    
+    def _filter_supported_images(self, file_list: List[str]) -> List[str]:
+        """Filter out unsupported image formats"""
+        return [f for f in file_list if Path(f).suffix.lower()[1:] in self.supported_images]
+    
+    def _get_image_dimensions(self, image_path: str) -> Tuple[Optional[int], Optional[int]]:
+        """Get image dimensions"""
+        try:
+            with Image.open(image_path) as img:
+                return img.size
+        except Exception as e:
+            logger.error(f"Error getting image dimensions for {image_path}: {e}")
+            return (None, None)
+    
+    async def _find_cover_image(self, manga_dir: Path) -> Optional[str]:
+        """Find cover image for manga"""
+        cover_names = ['cover', 'thumbnail', '001', '01', '1']
+        
+        for cover_name in cover_names:
+            for ext in self.supported_images:
+                cover_path = manga_dir / f"{cover_name}.{ext}"
+                if cover_path.exists():
+                    return str(cover_path)
+        
+        # If no specific cover found, return first image
+        for item in manga_dir.iterdir():
+            if item.is_file() and item.suffix.lower()[1:] in self.supported_images:
+                return str(item)
+        
+        return None
 
 
 # Create singleton instance

@@ -44,17 +44,52 @@ class ImageOptimizer:
         
         # Return cached version if it exists and is newer than original
         if cache_path.exists():
-            original_stat = os.stat(image_path.split(':')[0])  # Handle archive paths
-            cache_stat = os.stat(cache_path)
-            if cache_stat.st_mtime > original_stat.st_mtime:
-                return cache_path
+            try:
+                # Handle archive paths for stat check
+                original_file_path = image_path
+                if ':' in image_path:
+                    # Find the last colon to handle Windows drive letters
+                    archive_extensions = ['.zip', '.cbz', '.rar', '.cbr']
+                    for ext in archive_extensions:
+                        ext_pos = image_path.lower().find(ext + ':')
+                        if ext_pos != -1:
+                            original_file_path = image_path[:ext_pos + len(ext)]
+                            break
+                
+                original_stat = os.stat(original_file_path)
+                cache_stat = os.stat(cache_path)
+                if cache_stat.st_mtime > original_stat.st_mtime:
+                    return cache_path
+            except (OSError, FileNotFoundError):
+                # If we can't stat the original file (e.g., in tests), proceed with optimization
+                pass
         
         # Load and optimize image
         try:
             # Handle archive paths
             if ':' in image_path:
-                archive_path, internal_path = image_path.split(':', 1)
-                image = await self._load_from_archive(archive_path, internal_path)
+                # Find the last colon to handle Windows drive letters (C:\path:internal)
+                # Look for archive format extensions to determine proper split point
+                archive_extensions = ['.zip', '.cbz', '.rar', '.cbr']
+                colon_idx = -1
+                
+                for ext in archive_extensions:
+                    ext_pos = image_path.lower().find(ext + ':')
+                    if ext_pos != -1:
+                        colon_idx = ext_pos + len(ext)
+                        break
+                
+                if colon_idx > 0:
+                    archive_path = image_path[:colon_idx]
+                    internal_path = image_path[colon_idx + 1:]
+                    image = await self._load_from_archive(archive_path, internal_path)
+                else:
+                    # Check if this looks like an archive path with unsupported format
+                    if any(ext in image_path.lower() for ext in ['.7z:', '.tar:', '.gz:']):
+                        raise HTTPException(status_code=500, detail="Failed to load image from archive: Unsupported archive format")
+                    else:
+                        # Fallback to regular file if no proper archive separator found
+                        image = Image.open(image_path)
             else:
                 image = Image.open(image_path)
             
@@ -191,6 +226,9 @@ async def get_page_image(
             }
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions to preserve their error messages
+        raise
     except Exception as e:
         # Fallback to serving original image if optimization fails
         if ':' not in page.file_path and os.path.exists(page.file_path):

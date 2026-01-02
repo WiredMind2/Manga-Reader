@@ -24,7 +24,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     try:
         payload = verify_token(token)
-        username = payload.get("username")
+        username = payload.get("sub")
         if username is None:
             raise credentials_exception
     except Exception:
@@ -136,6 +136,6 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-async def logout():
+async def logout(current_user: User = Depends(get_current_user)):
     """Logout user (client should discard token)"""
     return {"message": "Successfully logged out"}

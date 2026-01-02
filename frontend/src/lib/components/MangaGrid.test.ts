@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import MangaGrid from '../lib/components/MangaGrid.svelte';
-import type { Manga } from '../lib/api/types';
+import MangaGrid from './MangaGrid.svelte';
+import type { Manga } from '../api/types';
 
 // Mock the navigation and API client
 const mockGoto = vi.fn();
@@ -45,9 +45,10 @@ describe('MangaGrid', () => {
 				slug: 'naruto',
 				author: 'Masashi Kishimoto',
 				description: 'A young ninja seeks recognition from his peers.',
-				status: 'completed',
+				status: 'completed' as const,
 				total_chapters: 700,
-				cover_image: '/covers/naruto.jpg'
+				cover_image: '/covers/naruto.jpg',
+				created_at: '2023-01-02T00:00:00Z'
 			},
 			{
 				id: 3,
@@ -55,9 +56,10 @@ describe('MangaGrid', () => {
 				slug: 'long-title',
 				author: 'Test Author With Very Long Name That Should Also Be Truncated',
 				description: 'A very long description that should be truncated when displayed in the manga grid to ensure proper layout and readability.',
-				status: 'hiatus',
+				status: 'hiatus' as const,
 				total_chapters: 50,
-				cover_image: null
+				cover_image: undefined,
+				created_at: '2023-01-03T00:00:00Z'
 			}
 		];
 	});
@@ -271,5 +273,186 @@ describe('MangaGrid', () => {
 		
 		expect(screen.getByText('One Piece')).toBeInTheDocument();
 		expect(screen.queryByText('A story about pirates')).not.toBeInTheDocument();
+	});
+});
+
+describe('MangaGrid - Mobile/Responsive Tests', () => {
+	let mockManga: Manga[];
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		
+		mockManga = [
+			{
+				id: 1,
+				title: 'One Piece',
+				slug: 'one-piece',
+				author: 'Eiichiro Oda',
+				description: 'A story about pirates and adventure on the high seas.',
+				status: 'ongoing',
+				total_chapters: 1000,
+				cover_image: '/covers/one-piece.jpg'
+			},
+			{
+				id: 2,
+				title: 'Naruto',
+				slug: 'naruto',
+				author: 'Masashi Kishimoto',
+				description: 'A young ninja seeks recognition from his peers.',
+				status: 'completed',
+				total_chapters: 700,
+				cover_image: '/covers/naruto.jpg'
+			}
+		];
+	});
+
+	it('has responsive grid layout classes', () => {
+		const { container } = render(MangaGrid, { manga: mockManga });
+		
+		const grid = container.querySelector('.grid');
+		expect(grid).toBeInTheDocument();
+		
+		// Check for responsive grid classes
+		const gridClasses = grid?.className;
+		expect(gridClasses).toContain('grid-cols-2'); // Mobile default
+		expect(gridClasses).toContain('sm:grid-cols-3'); // Small screens
+		expect(gridClasses).toContain('md:grid-cols-4'); // Medium screens
+		expect(gridClasses).toContain('lg:grid-cols-5'); // Large screens
+		expect(gridClasses).toContain('xl:grid-cols-6'); // Extra large screens
+	});
+
+	it('uses proper spacing for mobile layouts', () => {
+		const { container } = render(MangaGrid, { manga: mockManga });
+		
+		const grid = container.querySelector('.grid');
+		const gridClasses = grid?.className;
+		
+		// Check for responsive gap classes
+		expect(gridClasses).toContain('gap-4'); // Default gap
+		expect(gridClasses).toContain('md:gap-6'); // Larger gap on medium+ screens
+	});
+
+	it('properly sizes cover images for mobile', () => {
+		render(MangaGrid, { manga: [mockManga[0]] });
+		
+		const coverImage = screen.getByAltText('One Piece') as HTMLImageElement;
+		
+		// Should request appropriately sized images for mobile
+		expect(mockApiClient.getCoverImageUrl).toHaveBeenCalledWith(1, { 
+			width: 300, 
+			height: 400 
+		});
+	});
+
+	it('truncates long titles on mobile devices', () => {
+		const longTitleManga: Manga = {
+			...mockManga[0],
+			title: 'Very Long Title That Should Be Truncated On Mobile Devices Because Screen Space Is Limited'
+		};
+		
+		render(MangaGrid, { manga: [longTitleManga] });
+		
+		const titleElement = screen.getByText('Very Long Title That Should Be Truncated On Mob...');
+		expect(titleElement).toBeInTheDocument();
+		
+		// Check for text truncation classes
+		expect(titleElement.className).toContain('truncate');
+	});
+
+	it('truncates long author names for mobile', () => {
+		const longAuthorManga: Manga = {
+			...mockManga[0],
+			author: 'Very Long Author Name That Should Be Truncated On Small Screens'
+		};
+		
+		render(MangaGrid, { manga: [longAuthorManga] });
+		
+		const authorElement = screen.getByText(/by Very Long Author Name That Should Be Trunca.../);
+		expect(authorElement).toBeInTheDocument();
+		expect(authorElement.className).toContain('truncate');
+	});
+
+	it('uses mobile-friendly touch targets', async () => {
+		const user = userEvent.setup();
+		render(MangaGrid, { manga: [mockManga[0]] });
+		
+		const mangaCard = screen.getByRole('button', { name: /One Piece/ });
+		
+		// Cards should be large enough for touch interaction
+		const cardElement = mangaCard.closest('.group');
+		expect(cardElement).toBeInTheDocument();
+		
+		// Test touch interaction
+		await user.click(mangaCard);
+		expect(mockGoto).toHaveBeenCalledWith('/manga/one-piece');
+	});
+
+	it('maintains proper aspect ratios on all screen sizes', () => {
+		const { container } = render(MangaGrid, { manga: [mockManga[0]] });
+		
+		const imageContainer = container.querySelector('.aspect-\\[3\\/4\\]');
+		expect(imageContainer).toBeInTheDocument();
+		
+		// Should maintain 3:4 aspect ratio across all devices
+		const computedStyle = window.getComputedStyle(imageContainer!);
+		// Note: In actual browser test, would check computed aspect-ratio
+		expect(imageContainer?.className).toContain('aspect-[3/4]');
+	});
+
+	it('has proper responsive text sizing', () => {
+		render(MangaGrid, { manga: [mockManga[0]] });
+		
+		const titleElement = screen.getByText('One Piece');
+		const authorElement = screen.getByText('by Eiichiro Oda');
+		const chaptersElement = screen.getByText('1000 ch');
+		
+		// Check for responsive text size classes
+		expect(titleElement.className).toMatch(/text-(sm|base|lg)/);
+		expect(authorElement.className).toMatch(/text-(xs|sm)/);
+		expect(chaptersElement.className).toMatch(/text-(xs|sm)/);
+	});
+
+	it('handles no cover image gracefully on mobile', () => {
+		const noCoverManga: Manga = {
+			...mockManga[0],
+			cover_image: null
+		};
+		
+		render(MangaGrid, { manga: [noCoverManga] });
+		
+		const fallbackImage = screen.getByAltText('One Piece') as HTMLImageElement;
+		expect(fallbackImage).toBeInTheDocument();
+		
+		// Should still request a placeholder/fallback image
+		expect(mockApiClient.getCoverImageUrl).toHaveBeenCalled();
+	});
+
+	it('provides accessible labels for screen readers', () => {
+		render(MangaGrid, { manga: [mockManga[0]] });
+		
+		const mangaCard = screen.getByRole('button');
+		expect(mangaCard).toHaveAttribute('aria-label');
+		
+		const coverImage = screen.getByAltText('One Piece');
+		expect(coverImage).toBeInTheDocument();
+	});
+
+	it('supports keyboard navigation on mobile devices with keyboards', async () => {
+		const user = userEvent.setup();
+		render(MangaGrid, { manga: mockManga });
+		
+		const firstCard = screen.getByRole('button', { name: /One Piece/ });
+		const secondCard = screen.getByRole('button', { name: /Naruto/ });
+		
+		// Should be able to tab through cards
+		await user.tab();
+		expect(firstCard).toHaveFocus();
+		
+		await user.tab();
+		expect(secondCard).toHaveFocus();
+		
+		// Should be able to activate with Enter
+		await user.keyboard('{Enter}');
+		expect(mockGoto).toHaveBeenCalledWith('/manga/naruto');
 	});
 });

@@ -296,7 +296,7 @@ class TestPageModel:
         """Test creating a page."""
         # Get a chapter from test_manga
         result = await test_db.execute(
-            select(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         chapter = result.scalar_one()
         
@@ -326,7 +326,7 @@ class TestPageModel:
     async def test_page_minimal_fields(self, test_db: AsyncSession, test_manga: Manga):
         """Test creating page with minimal required fields."""
         result = await test_db.execute(
-            select(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         chapter = result.scalar_one()
         
@@ -359,7 +359,7 @@ class TestReadingProgressModel:
     ):
         """Test creating reading progress."""
         result = await test_db.execute(
-            select(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         chapter = result.scalar_one()
         
@@ -497,7 +497,7 @@ class TestModelRelationships:
     async def test_chapter_page_relationship(self, test_db: AsyncSession, test_manga: Manga):
         """Test chapter-page relationship."""
         result = await test_db.execute(
-            select(Chapter).where(Chapter.manga_id == test_manga.id)
+            select(Chapter).where(Chapter.manga_id == test_manga.id).limit(1)
         )
         chapter = result.scalar_one()
         

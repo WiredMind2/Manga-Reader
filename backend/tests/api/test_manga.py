@@ -268,3 +268,196 @@ class TestMangaEndpoints:
         for endpoint in endpoints:
             response = await client.get(endpoint)
             assert response.status_code == 401
+
+
+@pytest.mark.manga
+@pytest.mark.archive
+@pytest.mark.asyncio
+class TestArchiveEndpoints:
+    """Test archive-related endpoints."""
+    
+    async def test_extract_chapter_contents_zip(
+        self, 
+        authenticated_client: AsyncClient, 
+        test_db: AsyncSession,
+        temp_manga_dir: Path
+    ):
+        """Test extracting contents from ZIP archive chapter."""
+        from unittest.mock import patch, mock_open
+        import zipfile
+        
+        # Create archive manga
+        archive_manga = Manga(
+            title="Archive Test",
+            slug="archive-test", 
+            folder_path=str(temp_manga_dir / "test.cbz"),
+            is_archive=True
+        )
+        test_db.add(archive_manga)
+        await test_db.commit()
+        await test_db.refresh(archive_manga)
+        
+        # Create chapter
+        chapter = Chapter(
+            manga_id=archive_manga.id,
+            title="Chapter 1",
+            chapter_number=1,
+            folder_name="Chapter 1",
+            folder_path=f"{archive_manga.folder_path}:Chapter 1"
+        )
+        test_db.add(chapter)
+        await test_db.commit()
+        await test_db.refresh(chapter)
+        
+        # Mock zipfile functionality
+        mock_file_list = [
+            "Chapter 1/001.jpg",
+            "Chapter 1/002.jpg",
+            "Chapter 1/003.png",
+            "Chapter 2/001.jpg"  # Different chapter
+        ]
+
+        with patch('zipfile.ZipFile') as mock_zip:
+            mock_zip.return_value.__enter__.return_value.namelist.return_value = mock_file_list      
+
+            response = await authenticated_client.get(
+                f"/api/manga/{archive_manga.id}/extract/{chapter.id}"
+            )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["manga_id"] == archive_manga.id
+        assert data["chapter_id"] == chapter.id
+        assert data["chapter_title"] == "Chapter 1"
+        assert "archive_path" in data
+        assert data["file_count"] == 3  # Only Chapter 1 files
+        
+        # Check files are correctly filtered and sorted
+        files = data["files"]
+        assert len(files) == 3
+        assert all(f["path"].startswith("Chapter 1/") for f in files)
+        assert all(f["is_image"] for f in files)  # All should be images
+        
+        # Check sorting
+        filenames = [f["filename"] for f in files]
+        assert filenames == sorted(filenames)
+    
+    async def test_extract_chapter_contents_rar(
+        self, 
+        authenticated_client: AsyncClient,
+        test_db: AsyncSession,
+        temp_manga_dir: Path
+    ):
+        """Test extracting contents from RAR archive chapter."""
+        from unittest.mock import patch
+        import rarfile
+        
+        # Create archive manga
+        archive_manga = Manga(
+            title="RAR Test",
+            slug="rar-test",
+            folder_path=str(temp_manga_dir / "test.cbr"),
+            is_archive=True
+        )
+        test_db.add(archive_manga)
+        await test_db.commit()
+        await test_db.refresh(archive_manga)
+        
+        # Create chapter
+        chapter = Chapter(
+            manga_id=archive_manga.id,
+            title="Chapter 1",
+            chapter_number=1,
+            folder_name="Chapter 1",
+            folder_path=f"{archive_manga.folder_path}:Chapter 1"
+        )
+        test_db.add(chapter)
+        await test_db.commit()
+        await test_db.refresh(chapter)
+        
+        # Mock rarfile functionality
+        mock_file_list = [
+            "Chapter 1/page001.jpg",
+            "Chapter 1/page002.png"
+        ]
+
+        with patch('rarfile.RarFile') as mock_rar:
+            mock_rar.return_value.__enter__.return_value.namelist.return_value = mock_file_list      
+
+            response = await authenticated_client.get(
+                f"/api/manga/{archive_manga.id}/extract/{chapter.id}"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["manga_id"] == archive_manga.id
+        assert data["chapter_id"] == chapter.id
+        assert data["file_count"] == 2
+        
+        files = data["files"]
+        assert len(files) == 2
+        assert all(f["is_image"] for f in files)
+    
+    async def test_extract_chapter_contents_not_found(
+        self, 
+        authenticated_client: AsyncClient, 
+        test_manga: Manga
+    ):
+        """Test extracting from non-existent archive chapter."""
+        response = await authenticated_client.get(f"/api/manga/{test_manga.id}/extract/99999")
+        
+        assert response.status_code == 404
+        assert "Archive chapter not found" in response.json()["detail"]
+    
+    async def test_extract_chapter_contents_non_archive(
+        self, 
+        authenticated_client: AsyncClient,
+        test_manga: Manga,
+        test_chapter: Chapter
+    ):
+        """Test extracting from regular (non-archive) manga."""
+        response = await authenticated_client.get(
+            f"/api/manga/{test_manga.id}/extract/{test_chapter.id}"
+        )
+        
+        assert response.status_code == 404
+        assert "Archive chapter not found" in response.json()["detail"]
+    
+    async def test_extract_unsupported_archive_format(
+        self,
+        authenticated_client: AsyncClient,
+        test_db: AsyncSession,
+        temp_manga_dir: Path
+    ):
+        """Test extracting from unsupported archive format."""
+        # Create manga with unsupported format
+        archive_manga = Manga(
+            title="Unsupported Archive",
+            slug="unsupported-archive",
+            folder_path=str(temp_manga_dir / "test.7z"),  # Unsupported format
+            is_archive=True
+        )
+        test_db.add(archive_manga)
+        await test_db.commit()
+        await test_db.refresh(archive_manga)
+        
+        # Create chapter
+        chapter = Chapter(
+            manga_id=archive_manga.id,
+            title="Chapter 1", 
+            chapter_number=1,
+            folder_name="Chapter 1",
+            folder_path=f"{archive_manga.folder_path}:Chapter 1"
+        )
+        test_db.add(chapter)
+        await test_db.commit()
+        await test_db.refresh(chapter)
+        
+        response = await authenticated_client.get(
+            f"/api/manga/{archive_manga.id}/extract/{chapter.id}"
+        )
+        
+        assert response.status_code == 400
+        assert "Unsupported archive format" in response.json()["detail"]

@@ -36,8 +36,8 @@ async def list_manga(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
-    sort_by: str = Query("title", regex="^(title|created_at|updated_at|total_chapters)$"),
-    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    sort_by: str = Query("title", pattern="^(title|created_at|updated_at|total_chapters)$"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -244,3 +244,99 @@ async def get_manga_by_slug(
         folder_path=manga.folder_path,
         is_archive=manga.is_archive
     )
+
+
+@router.get("/{manga_id}/extract/{chapter_id}")
+async def extract_chapter_contents(
+    manga_id: int,
+    chapter_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Extract and list contents of archive chapter"""
+    # Verify chapter exists and belongs to manga
+    result = await db.execute(
+        select(Chapter)
+        .join(Manga)
+        .where(
+            Chapter.id == chapter_id,
+            Chapter.manga_id == manga_id,
+            Manga.is_archive == True
+        )
+    )
+    chapter = result.scalar_one_or_none()
+    
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Archive chapter not found")
+    
+    # Get manga details
+    result = await db.execute(select(Manga).where(Manga.id == manga_id))
+    manga = result.scalar_one_or_none()
+    
+    if not manga:
+        raise HTTPException(status_code=404, detail="Manga not found")
+    
+    try:
+        archive_path = Path(manga.folder_path)
+        
+        # Extract file list from archive
+        if archive_path.suffix.lower() in ['.cbz', '.zip']:
+            with zipfile.ZipFile(archive_path, 'r') as archive:
+                file_list = archive.namelist()
+        elif archive_path.suffix.lower() in ['.cbr', '.rar']:
+            with rarfile.RarFile(archive_path, 'r') as archive:
+                file_list = archive.namelist()
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported archive format")
+        
+        # Filter files for this chapter
+        chapter_prefix = chapter.folder_name
+        if ':' in chapter.folder_path:
+            # Split on the last colon to handle Windows paths (C:\path:chapter)
+            chapter_prefix = chapter.folder_path.split(':')[-1]
+        
+        # Ensure chapter prefix ends with slash for proper filtering
+        if chapter_prefix and not chapter_prefix.endswith('/'):
+            chapter_prefix += '/'
+        
+        chapter_files = []
+        for file_path in file_list:
+            # Check if file belongs to this chapter
+            if chapter_prefix:
+                if file_path.startswith(chapter_prefix) and not file_path.endswith('/'):
+                    # Extract file info
+                    file_info = {
+                        "path": file_path,
+                        "filename": Path(file_path).name,
+                        "size": None,  # Size would require reading the file
+                        "is_image": file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'))
+                    }
+                    chapter_files.append(file_info)
+            else:
+                # No chapter prefix - include all image files
+                if not file_path.endswith('/') and file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')):
+                    file_info = {
+                        "path": file_path,
+                        "filename": Path(file_path).name,
+                        "size": None,
+                        "is_image": True
+                    }
+                    chapter_files.append(file_info)
+        
+        return JSONResponse(content={
+            "manga_id": manga_id,
+            "chapter_id": chapter_id,
+            "chapter_title": chapter.title,
+            "archive_path": str(archive_path),
+            "files": sorted(chapter_files, key=lambda x: x['filename']),
+            "file_count": len(chapter_files)
+        })
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like unsupported format)
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to extract archive contents: {str(e)}"
+        )

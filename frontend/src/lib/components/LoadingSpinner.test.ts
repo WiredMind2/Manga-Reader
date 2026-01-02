@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import LoadingSpinner from '../lib/components/LoadingSpinner.svelte';
+import LoadingSpinner from './LoadingSpinner.svelte';
 
 describe('LoadingSpinner', () => {
 	beforeEach(() => {

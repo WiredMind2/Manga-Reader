@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import SearchBar from '../lib/components/SearchBar.svelte';
+import SearchBar from './SearchBar.svelte';
 
 describe('SearchBar', () => {
 	let user: ReturnType<typeof userEvent.setup>;

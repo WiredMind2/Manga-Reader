@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import shutil
 import zipfile
+import json
 from unittest.mock import patch, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -147,6 +148,159 @@ class TestMangaScanner:
             assert "Action" in genres
             assert "Adventure" in genres
     
+    async def test_metadata_with_cover_image(self, scanner: MangaScanner, test_db: AsyncSession):
+        """Test metadata loading with cover image support."""
+        temp_dir = Path(tempfile.mkdtemp())
+        
+        try:
+            # Create manga directory with metadata and cover
+            manga_dir = temp_dir / "Test Manga"
+            manga_dir.mkdir()
+            
+            # Create metadata file with cover image reference
+            metadata = {
+                "title": "Test Manga",
+                "author": "Test Author",
+                "description": "A test manga with cover",
+                "cover_image": "cover.jpg",
+                "genres": ["Test", "Drama"],
+                "status": "ongoing",
+                "year": 2023
+            }
+            (manga_dir / "metadata.json").write_text(json.dumps(metadata))
+            
+            # Create cover image file
+            cover_path = manga_dir / "cover.jpg"
+            cover_path.touch()
+            
+            # Create chapter
+            ch_dir = manga_dir / "Chapter 01"
+            ch_dir.mkdir()
+            (ch_dir / "01.jpg").touch()
+            
+            with patch.object(scanner, 'manga_dir', temp_dir):
+                await scanner.scan_manga_directory(test_db)
+                
+                # Check manga was created with cover image
+                result = await test_db.execute(select(Manga).where(Manga.title == "Test Manga"))
+                manga = result.scalar_one_or_none()
+                
+                assert manga is not None
+                assert manga.author == "Test Author"
+                assert manga.description == "A test manga with cover"
+                assert manga.cover_image == "cover.jpg"  # Should store relative path
+                assert manga.status == "ongoing"
+                assert manga.year == 2023
+                
+                genres = json.loads(manga.genres) if manga.genres else []
+                assert "Test" in genres
+                assert "Drama" in genres
+        
+        finally:
+            shutil.rmtree(temp_dir)
+    
+    async def test_metadata_invalid_json(self, scanner: MangaScanner, test_db: AsyncSession):
+        """Test handling of invalid metadata.json files."""
+        temp_dir = Path(tempfile.mkdtemp())
+        
+        try:
+            manga_dir = temp_dir / "Invalid Metadata Manga"
+            manga_dir.mkdir()
+            
+            # Create invalid JSON metadata
+            (manga_dir / "metadata.json").write_text("{invalid json content}")
+            
+            # Create chapter
+            ch_dir = manga_dir / "Chapter 01"
+            ch_dir.mkdir()
+            (ch_dir / "01.jpg").touch()
+            
+            with patch.object(scanner, 'manga_dir', temp_dir):
+                # Should not crash, just skip metadata loading
+                manga_list = await scanner.scan_manga_directory(test_db)
+                
+                assert len(manga_list) == 1
+                
+                # Check manga was created without metadata
+                result = await test_db.execute(select(Manga).where(Manga.title == "Invalid Metadata Manga"))
+                manga = result.scalar_one_or_none()
+                
+                assert manga is not None
+                assert manga.author is None  # No metadata loaded
+                assert manga.description is None
+                
+        finally:
+            shutil.rmtree(temp_dir)
+    
+    async def test_metadata_partial_data(self, scanner: MangaScanner, test_db: AsyncSession):
+        """Test metadata with only some fields provided."""
+        temp_dir = Path(tempfile.mkdtemp())
+        
+        try:
+            manga_dir = temp_dir / "Partial Metadata Manga"
+            manga_dir.mkdir()
+            
+            # Create partial metadata (missing some fields)
+            metadata = {
+                "author": "Partial Author",
+                "year": 2020
+                # Missing description, genres, status, etc.
+            }
+            (manga_dir / "metadata.json").write_text(json.dumps(metadata))
+            
+            # Create chapter
+            ch_dir = manga_dir / "Chapter 01"
+            ch_dir.mkdir()
+            (ch_dir / "01.jpg").touch()
+            
+            with patch.object(scanner, 'manga_dir', temp_dir):
+                await scanner.scan_manga_directory(test_db)
+                
+                # Check manga was created with partial metadata
+                result = await test_db.execute(select(Manga).where(Manga.title == "Partial Metadata Manga"))
+                manga = result.scalar_one_or_none()
+                
+                assert manga is not None
+                assert manga.author == "Partial Author"
+                assert manga.year == 2020
+                assert manga.description is None  # Not provided
+                assert manga.status is None  # Not provided
+                
+        finally:
+            shutil.rmtree(temp_dir)
+    
+    async def test_metadata_without_file(self, scanner: MangaScanner, test_db: AsyncSession):
+        """Test scanning manga without metadata.json (fallback behavior)."""
+        temp_dir = Path(tempfile.mkdtemp())
+        
+        try:
+            manga_dir = temp_dir / "No Metadata Manga"
+            manga_dir.mkdir()
+            
+            # Create chapter without metadata file
+            ch_dir = manga_dir / "Chapter 01"
+            ch_dir.mkdir()
+            (ch_dir / "01.jpg").touch()
+            
+            with patch.object(scanner, 'manga_dir', temp_dir):
+                manga_list = await scanner.scan_manga_directory(test_db)
+                
+                assert len(manga_list) == 1
+                
+                # Check manga was created with default values
+                result = await test_db.execute(select(Manga).where(Manga.title == "No Metadata Manga"))
+                manga = result.scalar_one_or_none()
+                
+                assert manga is not None
+                assert manga.author is None
+                assert manga.description is None
+                assert manga.status is None
+                assert manga.year is None
+                assert manga.genres is None or manga.genres == "[]"
+                
+        finally:
+            shutil.rmtree(temp_dir)
+    
     async def test_chapter_scanning(self, scanner: MangaScanner, test_db: AsyncSession, complex_manga_dir: Path):
         """Test scanning chapters within manga."""
         with patch.object(scanner, 'manga_dir', complex_manga_dir):
@@ -169,7 +323,14 @@ class TestMangaScanner:
     
     async def test_page_scanning(self, scanner: MangaScanner, test_db: AsyncSession, complex_manga_dir: Path):
         """Test scanning pages within chapters."""
-        with patch.object(scanner, 'manga_dir', complex_manga_dir):
+        with patch.object(scanner, 'manga_dir', complex_manga_dir), \
+             patch('PIL.Image.open') as mock_open:
+            
+            # Mock image dimensions for all files
+            mock_image = MagicMock()
+            mock_image.size = (800, 1200)
+            mock_open.return_value.__enter__.return_value = mock_image
+            
             await scanner.scan_manga_directory(test_db)
             
             # Check pages in first chapter of One Piece
@@ -250,9 +411,10 @@ class TestMangaScanner:
         with patch('PIL.Image.open') as mock_open:
             mock_image = MagicMock()
             mock_image.size = (800, 1200)
-            mock_open.return_value = mock_image
+            # Set up context manager behavior
+            mock_open.return_value.__enter__.return_value = mock_image
             
-            width, height = await scanner._get_image_dimensions(str(temp_manga_dir / "test.jpg"))
+            width, height = scanner._get_image_dimensions(str(temp_manga_dir / "test.jpg"))
             
             assert width == 800
             assert height == 1200
@@ -260,7 +422,7 @@ class TestMangaScanner:
     async def test_image_dimension_extraction_error(self, scanner: MangaScanner, temp_manga_dir: Path):
         """Test handling errors in image dimension extraction."""
         with patch('PIL.Image.open', side_effect=Exception("Cannot open image")):
-            width, height = await scanner._get_image_dimensions(str(temp_manga_dir / "test.jpg"))
+            width, height = scanner._get_image_dimensions(str(temp_manga_dir / "test.jpg"))
             
             # Should return None for both dimensions on error
             assert width is None

@@ -216,13 +216,7 @@ class PageResponse(BaseModel):
         from_attributes = True
 
 
-# Progress schemas
-class ReadingProgressUpdate(BaseModel):
-    chapter_id: int
-    page_number: int = 1
-    reading_direction: Optional[str] = "rtl"
-    zoom_level: Optional[float] = 1.0
-    scroll_position: Optional[float] = 0.0
+# Progress schemas (duplicate removed - see line 102 for actual definition)
 
 
 class ReadingProgressResponse(BaseModel):
@@ -234,6 +228,28 @@ class ReadingProgressResponse(BaseModel):
     reading_direction: str
     zoom_level: float
     scroll_position: float
+    
+    class Config:
+        from_attributes = True
+
+
+# User Preference schemas
+class UserPreferenceUpdate(BaseModel):
+    default_reading_direction: Optional[str] = Field(None, pattern="^(rtl|ltr|ttb)$")
+    auto_next_chapter: Optional[bool] = None
+    page_fit_mode: Optional[str] = Field(None, pattern="^(fit-width|fit-height|original)$") 
+    theme: Optional[str] = Field(None, pattern="^(dark|light|auto)$")
+    items_per_page: Optional[int] = Field(None, ge=5, le=100)
+
+
+class UserPreferenceResponse(BaseModel):
+    id: int
+    user_id: int
+    default_reading_direction: str
+    auto_next_chapter: bool
+    page_fit_mode: str
+    theme: str
+    items_per_page: int
     
     class Config:
         from_attributes = True

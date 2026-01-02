@@ -78,18 +78,19 @@ pytest -v tests/models/test_models.py
 backend/tests/
 ├── conftest.py              # Test configuration and fixtures
 ├── api/                     # API endpoint tests
-│   ├── test_auth.py
-│   ├── test_manga.py
-│   ├── test_images.py
-│   └── test_progress.py
+│   ├── test_auth.py         # Authentication endpoints
+│   ├── test_manga.py        # Manga CRUD + archive extraction
+│   ├── test_images.py       # Image serving + archive formats
+│   ├── test_progress.py     # Reading progress tracking
+│   └── test_preferences.py  # User preference management (NEW)
 ├── core/                    # Core functionality tests
-│   └── test_security.py
+│   └── test_security.py     # JWT tokens + password hashing
 ├── models/                  # Database model tests
-│   └── test_models.py
+│   └── test_models.py       # Database schema validation
 ├── services/                # Business logic tests
-│   └── test_manga_scanner.py
+│   └── test_manga_scanner.py # File scanning + metadata support
 └── integration/             # Integration tests
-    └── test_workflows.py
+    └── test_workflows.py    # End-to-end user workflows
 ```
 
 ### Key Testing Features
@@ -98,6 +99,10 @@ backend/tests/
 - **Authentication Mocking**: Helper functions for creating authenticated clients
 - **File System Mocking**: Temporary directories for testing file operations
 - **API Client Testing**: Async HTTP client for endpoint testing
+- **Archive Format Support**: Comprehensive testing of ZIP, RAR, CBZ, CBR formats
+- **Metadata Testing**: JSON metadata file parsing and validation
+- **User Preference Testing**: Reading direction, themes, and settings
+- **Mobile Responsiveness**: Touch targets, viewport adaptation, accessibility
 - **Comprehensive Fixtures**: Pre-configured test data (users, manga, chapters, pages)
 
 ## Frontend Testing
@@ -439,6 +444,40 @@ When adding new features:
 2. **Maintain coverage**: Ensure new code is properly tested
 3. **Update documentation**: Include test instructions for new features
 4. **Run full test suite**: Verify no regressions before submitting PRs
+
+## New Test Coverage (Recently Added)
+
+### Archive Format Support
+- **CBZ/ZIP Format Testing**: Complete archive extraction and image serving
+- **CBR/RAR Format Testing**: RAR archive support with proper error handling
+- **Archive Extraction Endpoint**: `/api/manga/{id}/extract/{chapter_id}` endpoint tests
+- **Corrupted Archive Handling**: Error scenarios for invalid archive files
+
+### User Preferences System
+- **Reading Direction Preferences**: RTL, LTR, TTB mode support
+- **Theme and Layout Settings**: Dark/light themes, page fit modes
+- **Preference Validation**: Input validation and error handling
+- **Default Preference Creation**: Automatic setup for new users
+
+### Metadata Support
+- **JSON Metadata Loading**: `metadata.json` file parsing and validation
+- **Cover Image Support**: Cover image path handling and fallbacks
+- **Partial Metadata**: Handling incomplete or missing metadata fields
+- **Invalid JSON Handling**: Graceful degradation for corrupted metadata
+
+### Mobile Responsiveness
+- **Responsive Grid Layouts**: Touch-friendly card sizing across devices
+- **Mobile Navigation**: Touch target compliance (44px minimum)
+- **Text Readability**: Proper font sizing and contrast on mobile
+- **Orientation Changes**: Layout adaptation for portrait/landscape
+- **Performance Testing**: Mobile network simulation and loading times
+
+### Accessibility Features  
+- **Keyboard Navigation**: Full app navigation via keyboard
+- **Screen Reader Support**: ARIA attributes and semantic HTML
+- **Focus Management**: Visible focus indicators and logical tab order
+- **Color Contrast**: Adequate contrast ratios for text readability
+- **Error Announcements**: Accessible error message delivery
 
 ### Pre-commit Hooks
 

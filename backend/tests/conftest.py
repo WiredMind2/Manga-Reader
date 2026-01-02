@@ -7,7 +7,7 @@ from typing import AsyncGenerator, Generator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 
 from app.main import app
 from app.core.database import Base, get_db
@@ -19,13 +19,25 @@ from app.core.security import get_password_hash
 # Test database URL - use in-memory SQLite for tests
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-# Create test engine
+# Create test engine with foreign key support
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
     poolclass=StaticPool,
     connect_args={
         "check_same_thread": False,
     },
+    echo=False
+)
+
+# Enable foreign key constraints for SQLite
+async def enable_foreign_keys(connection, connection_record):
+    """Enable foreign key constraints in SQLite."""
+    cursor = await connection.execute("PRAGMA foreign_keys=ON")
+    await cursor.close()
+
+from sqlalchemy import event
+event.listens_for(test_engine.sync_engine, "connect")(
+    lambda dbapi_connection, connection_record: dbapi_connection.execute("PRAGMA foreign_keys=ON")
 )
 
 
@@ -57,15 +69,19 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 async def client(test_db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """Create a test client with dependency overrides."""
     
-    def override_get_db():
+    # Create a proper async dependency override
+    async def get_test_db():
         return test_db
     
-    app.dependency_overrides[get_db] = override_get_db
+    # Override the dependency
+    app.dependency_overrides[get_db] = get_test_db
     
-    async with AsyncClient(app=app, base_url="http://testserver") as ac:
-        yield ac
+    # Create the async client
+    async with AsyncClient(base_url="http://testserver") as client:
+        client._transport = ASGITransport(app=app)
+        yield client
     
-    # Clean up dependency overrides
+    # Clean up
     app.dependency_overrides.clear()
 
 
@@ -246,6 +262,17 @@ async def test_manga(test_db: AsyncSession, temp_manga_dir: Path) -> Manga:
     await test_db.commit()
     
     return manga
+
+
+@pytest.fixture
+async def test_chapter(test_db: AsyncSession, test_manga: Manga) -> Chapter:
+    """Get the first chapter from test_manga."""
+    from sqlalchemy import select
+    result = await test_db.execute(
+        select(Chapter).where(Chapter.manga_id == test_manga.id, Chapter.chapter_number == 1)
+    )
+    chapter = result.scalar_one()
+    return chapter
 
 
 async def create_access_token_for_user(user: User) -> str:

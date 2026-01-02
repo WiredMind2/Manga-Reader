@@ -103,7 +103,7 @@ async def update_reading_progress(
     )
     chapter = result.scalar_one_or_none()
     if not chapter:
-        raise HTTPException(status_code=404, detail="Chapter not found")
+        raise HTTPException(status_code=400, detail="Chapter not found or does not belong to this manga")
     
     # Get or create progress record
     result = await db.execute(
@@ -176,7 +176,7 @@ async def delete_reading_progress(
     await db.delete(progress)
     await db.commit()
     
-    return {"message": "Reading progress deleted successfully"}
+    return {"message": "Successfully deleted reading progress"}
 
 
 @router.get("/recent/{limit}")
