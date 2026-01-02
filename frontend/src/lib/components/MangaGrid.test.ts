@@ -4,21 +4,22 @@ import userEvent from '@testing-library/user-event';
 import MangaGrid from './MangaGrid.svelte';
 import type { Manga } from '../api/types';
 
-// Mock the navigation and API client
-const mockGoto = vi.fn();
-const mockApiClient = {
-	getCoverImageUrl: vi.fn((id: number, options?: any) => 
-		`https://api.example.com/covers/${id}?width=${options?.width}&height=${options?.height}`
-	)
-};
-
+// Mock modules first
 vi.mock('$app/navigation', () => ({
-	goto: mockGoto
+	goto: vi.fn()
 }));
 
-vi.mock('../lib/api/client', () => ({
-	apiClient: mockApiClient
+vi.mock('../api/client', () => ({
+	apiClient: {
+		getCoverImageUrl: vi.fn((id: number, options?: any) => 
+			`https://api.example.com/covers/${id}?width=${options?.width}&height=${options?.height}`
+		)
+	}
 }));
+
+// Import after mocking
+import { goto } from '$app/navigation';
+import { apiClient } from '../api/client';
 
 describe('MangaGrid', () => {
 	let mockManga: Manga[];
@@ -95,7 +96,7 @@ describe('MangaGrid', () => {
 		
 		const coverImage = screen.getByAltText('One Piece') as HTMLImageElement;
 		expect(coverImage.src).toBe('https://api.example.com/covers/1?width=300&height=400');
-		expect(mockApiClient.getCoverImageUrl).toHaveBeenCalledWith(1, { width: 300, height: 400 });
+		expect(apiClient.getCoverImageUrl).toHaveBeenCalledWith(1, { width: 300, height: 400 });
 	});
 
 	it('applies correct status colors', () => {
@@ -117,7 +118,7 @@ describe('MangaGrid', () => {
 		const mangaCard = screen.getByRole('button', { name: /one piece/i });
 		await user.click(mangaCard);
 		
-		expect(mockGoto).toHaveBeenCalledWith('/manga/one-piece');
+		expect(goto).toHaveBeenCalledWith('/manga/one-piece');
 	});
 
 	it('handles keyboard navigation', async () => {
@@ -127,7 +128,7 @@ describe('MangaGrid', () => {
 		mangaCard.focus();
 		await user.keyboard('{Enter}');
 		
-		expect(mockGoto).toHaveBeenCalledWith('/manga/one-piece');
+		expect(goto).toHaveBeenCalledWith('/manga/one-piece');
 	});
 
 	it('handles read button click', async () => {
@@ -136,7 +137,7 @@ describe('MangaGrid', () => {
 		const readButton = screen.getByText('Read Now');
 		await user.click(readButton);
 		
-		expect(mockGoto).toHaveBeenCalledWith('/manga/one-piece');
+		expect(goto).toHaveBeenCalledWith('/manga/one-piece');
 	});
 
 	it('stops propagation on read button click', async () => {
@@ -338,7 +339,7 @@ describe('MangaGrid - Mobile/Responsive Tests', () => {
 		const coverImage = screen.getByAltText('One Piece') as HTMLImageElement;
 		
 		// Should request appropriately sized images for mobile
-		expect(mockApiClient.getCoverImageUrl).toHaveBeenCalledWith(1, { 
+		expect(apiClient.getCoverImageUrl).toHaveBeenCalledWith(1, { 
 			width: 300, 
 			height: 400 
 		});
@@ -384,7 +385,7 @@ describe('MangaGrid - Mobile/Responsive Tests', () => {
 		
 		// Test touch interaction
 		await user.click(mangaCard);
-		expect(mockGoto).toHaveBeenCalledWith('/manga/one-piece');
+		expect(goto).toHaveBeenCalledWith('/manga/one-piece');
 	});
 
 	it('maintains proper aspect ratios on all screen sizes', () => {
@@ -424,7 +425,7 @@ describe('MangaGrid - Mobile/Responsive Tests', () => {
 		expect(fallbackImage).toBeInTheDocument();
 		
 		// Should still request a placeholder/fallback image
-		expect(mockApiClient.getCoverImageUrl).toHaveBeenCalled();
+		expect(apiClient.getCoverImageUrl).toHaveBeenCalled();
 	});
 
 	it('provides accessible labels for screen readers', () => {
@@ -453,6 +454,6 @@ describe('MangaGrid - Mobile/Responsive Tests', () => {
 		
 		// Should be able to activate with Enter
 		await user.keyboard('{Enter}');
-		expect(mockGoto).toHaveBeenCalledWith('/manga/naruto');
+		expect(goto).toHaveBeenCalledWith('/manga/naruto');
 	});
 });

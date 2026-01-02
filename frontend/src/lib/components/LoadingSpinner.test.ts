@@ -91,7 +91,7 @@ describe('LoadingSpinner', () => {
 	});
 
 	it('applies correct message styling for different sizes', () => {
-		const { rerender } = render(LoadingSpinner, { 
+		const { unmount } = render(LoadingSpinner, { 
 			size: 'md',
 			message: 'Test message'
 		});
@@ -99,7 +99,9 @@ describe('LoadingSpinner', () => {
 		let message = screen.getByText('Test message');
 		expect(message).toHaveClass('mt-4');
 		
-		rerender({ 
+		unmount();
+		
+		render(LoadingSpinner, { 
 			size: 'sm',
 			message: 'Custom message'
 		});
