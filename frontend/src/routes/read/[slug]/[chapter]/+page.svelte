@@ -39,6 +39,16 @@
   $: previousChapter = currentChapterIndex > 0 ? chapters[currentChapterIndex - 1] : null
   $: nextChapter = currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1] : null
 
+  $: selectionRect = (ocrMode && selectionStart && selectionEnd) ? {
+    x: Math.min(selectionStart.x, selectionEnd.x),
+    y: Math.min(selectionStart.y, selectionEnd.y),
+    width: Math.abs(selectionEnd.x - selectionStart.x),
+    height: Math.abs(selectionEnd.y - selectionStart.y)
+  } : null
+
+  $: selectionStyle = selectionRect ? 
+    `left: ${selectionRect.x}px; top: ${selectionRect.y}px; width: ${selectionRect.width}px; height: ${selectionRect.height}px;` : ''
+
   // Load reading progress
   async function loadProgress() {
     try {
@@ -156,8 +166,8 @@
     if (!ocrMode || !imageElement) return
     
     const rect = imageElement.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+    const x = (event.clientX - rect.left) / zoomLevel
+    const y = (event.clientY - rect.top) / zoomLevel
     
     isSelecting = true
     selectionStart = { x, y }
@@ -168,8 +178,8 @@
     if (!ocrMode || !isSelecting || !selectionStart || !imageElement) return
     
     const rect = imageElement.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+    const x = (event.clientX - rect.left) / zoomLevel
+    const y = (event.clientY - rect.top) / zoomLevel
     
     selectionEnd = { x, y }
   }
@@ -181,8 +191,11 @@
     
     // Calculate normalized coordinates relative to actual image dimensions
     const rect = imageElement.getBoundingClientRect()
-    const scaleX = imageElement.naturalWidth / rect.width
-    const scaleY = imageElement.naturalHeight / rect.height
+    const unscaledWidth = rect.width / zoomLevel
+    const unscaledHeight = rect.height / zoomLevel
+    
+    const scaleX = imageElement.naturalWidth / unscaledWidth
+    const scaleY = imageElement.naturalHeight / unscaledHeight
     
     // Get selection coordinates (normalize to top-left corner)
     const x1 = Math.min(selectionStart.x, selectionEnd.x)
@@ -193,6 +206,8 @@
     const width = x2 - x1
     const height = y2 - y1
     
+    console.log('Selected area:', { x1, y1, width, height })
+
     // Ignore very small selections (likely accidental clicks)
     if (width < 10 || height < 10) {
       selectionStart = null
@@ -228,22 +243,7 @@
       }
     } finally {
       ocrLoading = false
-      // Clear selection after processing
-      selectionStart = null
-      selectionEnd = null
     }
-  }
-
-  function getSelectionStyle() {
-    if (!selectionStart || !selectionEnd || !imageElement) return ''
-    
-    const rect = imageElement.getBoundingClientRect()
-    const x1 = Math.min(selectionStart.x, selectionEnd.x)
-    const y1 = Math.min(selectionStart.y, selectionEnd.y)
-    const x2 = Math.max(selectionStart.x, selectionEnd.x)
-    const y2 = Math.max(selectionStart.y, selectionEnd.y)
-    
-    return `left: ${x1}px; top: ${y1}px; width: ${x2 - x1}px; height: ${y2 - y1}px;`
   }
 
   // Controls visibility
@@ -405,6 +405,11 @@
   <meta name="description" content="Reading {manga.title} Chapter {chapter.chapter_number}" />
 </svelte:head>
 
+<svelte:window 
+  on:mousemove={handleMouseMove} 
+  on:mouseup={handleMouseUp} 
+/>
+
 <div class="fixed inset-0 bg-black text-white overflow-hidden" class:reading-rtl={readingDirection === 'rtl'} class:ocr-active={ocrMode}>
   <!-- Page container -->
   <div 
@@ -418,27 +423,25 @@
     tabindex="0"
     aria-label={ocrMode ? "OCR mode - select text area" : "Manga page - click left or right to navigate"}
   >
-    <div class="relative inline-block">
+    <div class="relative inline-block transition-transform duration-200" style="transform: scale({zoomLevel})">
       {#if currentPage}
         <img
           bind:this={imageElement}
           src={getPageImageUrl(currentPage)}
           alt="Page {currentPageIndex + 1}"
-          class="manga-page max-w-full max-h-full transition-transform duration-200"
-          style="transform: scale({zoomLevel})"
+          class="manga-page max-w-full max-h-full"
+          draggable={!ocrMode}
           loading="lazy"
           on:load={() => pageLoading = false}
           on:loadstart={() => pageLoading = true}
           on:mousedown={handleMouseDown}
-          on:mousemove={handleMouseMove}
-          on:mouseup={handleMouseUp}
         />
         
         <!-- Selection rectangle overlay -->
-        {#if ocrMode && selectionStart && selectionEnd}
+        {#if selectionRect}
           <div 
             class="absolute border-2 border-blue-500 bg-blue-500/20 pointer-events-none"
-            style={getSelectionStyle()}
+            style={selectionStyle}
           ></div>
         {/if}
       {/if}
