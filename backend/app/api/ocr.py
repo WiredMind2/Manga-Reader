@@ -99,7 +99,8 @@ async def process_ocr(
                 reading="",
                 translation="No text detected in the selected region",
                 kanji_breakdown=[],
-                notes="Try selecting a region with visible text"
+                notes="Try selecting a region with visible text",
+                error=None
             )
         
         logger.info(f"OCR extracted text: {japanese_text}")
@@ -123,7 +124,8 @@ async def process_ocr(
             reading=translation_result.get("reading", ""),
             translation=translation_result.get("translation", "Translation unavailable"),
             kanji_breakdown=kanji_breakdown,
-            notes=translation_result.get("notes")
+            notes=translation_result.get("notes"),
+            error=None
         )
         
     except RuntimeError as e:

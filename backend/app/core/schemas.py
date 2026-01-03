@@ -121,123 +121,11 @@ class ReadingProgressResponse(BaseModel):
         from_attributes = True
 
 
-# Pagination schemas
-class PaginatedResponse(BaseModel):
-    items: List[Any]
-    total: int
-    page: int
-    size: int
-    pages: int
-# User schemas
-class UserBase(BaseModel):
-    username: str
-    email: EmailStr
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserResponse(UserBase):
-    id: int
-    is_active: bool
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-
-# Manga schemas
-class MangaBase(BaseModel):
-    title: str
-    description: Optional[str] = None
-    author: Optional[str] = None
-    artist: Optional[str] = None
-    status: Optional[str] = None
-    year: Optional[int] = None
-
-
-class MangaResponse(MangaBase):
-    id: int
-    slug: str
-    cover_image: Optional[str] = None
-    total_chapters: int
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class MangaDetail(MangaResponse):
-    genres: Optional[list] = None
-    folder_path: str
-    is_archive: bool
-
-
-# Chapter schemas
-class ChapterBase(BaseModel):
-    title: str
-    chapter_number: float
-
-
-class ChapterResponse(ChapterBase):
-    id: int
-    folder_name: str
-    page_count: int
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-# Page schemas  
-class PageResponse(BaseModel):
-    id: int
-    page_number: int
-    filename: str
-    width: Optional[int] = None
-    height: Optional[int] = None
-    
-    class Config:
-        from_attributes = True
-
-
-# Progress schemas (duplicate removed - see line 102 for actual definition)
-
-
-class ReadingProgressResponse(BaseModel):
-    id: int
-    manga_id: int
-    chapter_id: Optional[int] = None
-    page_number: int
-    last_read_at: datetime
-    reading_direction: str
-    zoom_level: float
-    scroll_position: float
-    
-    class Config:
-        from_attributes = True
-
-
 # User Preference schemas
 class UserPreferenceUpdate(BaseModel):
     default_reading_direction: Optional[str] = Field(None, pattern="^(rtl|ltr|ttb)$")
     auto_next_chapter: Optional[bool] = None
-    page_fit_mode: Optional[str] = Field(None, pattern="^(fit-width|fit-height|original)$") 
+    page_fit_mode: Optional[str] = Field(None, pattern="^(fit-width|fit-height|original)$")
     theme: Optional[str] = Field(None, pattern="^(dark|light|auto)$")
     items_per_page: Optional[int] = Field(None, ge=5, le=100)
 
@@ -255,9 +143,9 @@ class UserPreferenceResponse(BaseModel):
         from_attributes = True
 
 
-# Pagination
+# Pagination schemas
 class PaginatedResponse(BaseModel):
-    items: list
+    items: List[Any]
     total: int
     page: int
     size: int

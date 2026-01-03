@@ -11,8 +11,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash using PBKDF2"""
     try:
         # Extract salt and hash from stored password
-        stored_hash, salt = hashed_password.split(':', 1)
-        salt = base64.b64decode(salt.encode())
+        stored_hash, salt_str = hashed_password.split(':', 1)
+        salt = base64.b64decode(salt_str.encode())
         
         # Hash the plain password with the same salt
         pwd_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), salt, 100000)
