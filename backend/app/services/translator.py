@@ -22,6 +22,9 @@ except ImportError:
 
 
 class TranslatorService:
+    # OpenRouter API configuration
+    OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    
     def __init__(self):
         self.provider = settings.TRANSLATION_PROVIDER.lower()
         
@@ -76,7 +79,7 @@ class TranslatorService:
         try:
             with httpx.Client() as client:
                 response = client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
+                    self.OPENROUTER_API_URL,
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json",
@@ -95,10 +98,16 @@ class TranslatorService:
                 )
                 
                 if response.status_code != 200:
-                    logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
+                    logger.error(f"OpenRouter API error: HTTP {response.status_code}")
                     return self._error_response(text, f"API error: {response.status_code}")
                 
                 result = response.json()
+                
+                # Validate response structure
+                if 'choices' not in result or not result['choices']:
+                    logger.error("OpenRouter API returned invalid response structure")
+                    return self._error_response(text, "Invalid API response structure")
+                
                 content = result['choices'][0]['message']['content']
                 return json.loads(content)
                 
