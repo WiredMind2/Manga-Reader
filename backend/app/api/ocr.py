@@ -1,162 +1,140 @@
-"""
-OCR API endpoints for text extraction and translation from manga images.
-"""
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
-from app.core.database import get_db
-from app.models import Page, Chapter, Manga, User
+from app.services.ocr import get_ocr_service
+from app.services.translator import get_translator_service
 from app.api.auth import get_current_user
-from app.services.ocr_service import ocr_service
+from app.models import User
+from app.core.database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-class OCRRequest(BaseModel):
-    """Request model for OCR operations"""
-    source_language: str = Field(default="Japanese", description="Source language of the text")
-    target_language: Optional[str] = Field(default=None, description="Target language for translation")
-    custom_prompt: Optional[str] = Field(default=None, description="Custom prompt for the OCR model")
+class OcrRequest(BaseModel):
+    """Request model for OCR processing"""
+    manga_id: int = Field(..., description="Manga ID")
+    chapter_id: int = Field(..., description="Chapter ID")
+    page_id: int = Field(..., description="Page ID")
+    x: int = Field(..., ge=0, description="X coordinate of selection box")
+    y: int = Field(..., ge=0, description="Y coordinate of selection box")
+    width: int = Field(..., gt=0, description="Width of selection box")
+    height: int = Field(..., gt=0, description="Height of selection box")
 
 
-class OCRResponse(BaseModel):
-    """Response model for OCR operations"""
-    success: bool
-    text: Optional[str] = None
-    original_text: Optional[str] = None
-    translated_text: Optional[str] = None
-    source_language: str
-    target_language: Optional[str] = None
-    model: str
-    error: Optional[str] = None
+class KanjiBreakdown(BaseModel):
+    """Model for individual kanji breakdown"""
+    kanji: str
+    reading: str
+    meaning: str
 
 
-@router.get("/status")
-async def get_ocr_status():
-    """Get OCR service status"""
-    return {
-        "enabled": ocr_service.enabled,
-        "available": ocr_service.is_available(),
-        "model": ocr_service.model if ocr_service.enabled else None,
-        "base_url": ocr_service.base_url if ocr_service.enabled else None
-    }
+class OcrResponse(BaseModel):
+    """Response model for OCR processing with translation"""
+    original: str = Field(..., description="Original Japanese text from OCR")
+    reading: str = Field(..., description="Hiragana/romaji reading")
+    translation: str = Field(..., description="English translation")
+    kanji_breakdown: list[KanjiBreakdown] = Field(default_factory=list, description="Breakdown of kanji characters")
+    notes: Optional[str] = Field(None, description="Cultural notes or nuances")
+    error: Optional[str] = Field(None, description="Error message if any")
 
 
-@router.post("/{manga_id}/{chapter_id}/{page_id}/extract", response_model=OCRResponse)
-async def extract_text_from_page(
-    manga_id: int,
-    chapter_id: int,
-    page_id: int,
-    ocr_request: OCRRequest,
+@router.post("/process", response_model=OcrResponse)
+async def process_ocr(
+    request: OcrRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Extract text from a manga page image using OCR.
-    
-    This endpoint uses Ollama with Qwen2.5-VL model to extract text from the image.
-    Supports multilingual text extraction, particularly strong with Japanese and other Asian scripts.
+    Process a selected region of a manga page:
+    1. Extract Japanese text using OCR
+    2. Translate to English using Ollama
+    3. Provide kanji breakdown and cultural notes
     """
-    if not ocr_service.enabled:
-        raise HTTPException(status_code=503, detail="OCR service is not enabled")
-    
-    if not ocr_service.is_available():
-        raise HTTPException(status_code=503, detail="OCR service is not available")
-    
-    # Verify page exists and belongs to the correct manga/chapter
-    result = await db.execute(
-        select(Page, Chapter, Manga)
-        .join(Chapter, Page.chapter_id == Chapter.id)
-        .join(Manga, Chapter.manga_id == Manga.id)
-        .where(
-            Page.id == page_id,
-            Chapter.id == chapter_id,
-            Manga.id == manga_id
+    try:
+        # Get the page from database to retrieve file_path
+        # NOTE: This endpoint assumes all authenticated users have access to all manga.
+        # If user-specific access control is added in the future, add permission checks here.
+        from sqlalchemy import select
+        from app.models import Page, Chapter, Manga
+        
+        result = await db.execute(
+            select(Page, Chapter, Manga)
+            .join(Chapter, Page.chapter_id == Chapter.id)
+            .join(Manga, Chapter.manga_id == Manga.id)
+            .where(
+                Page.id == request.page_id,
+                Chapter.id == request.chapter_id,
+                Manga.id == request.manga_id
+            )
         )
-    )
-    
-    page_data = result.first()
-    if not page_data:
-        raise HTTPException(status_code=404, detail="Page not found")
-    
-    page, chapter, manga = page_data
-    
-    # Extract text from the page image
-    result = await ocr_service.extract_text(
-        image_path=page.file_path,
-        source_language=ocr_request.source_language,
-        prompt=ocr_request.custom_prompt
-    )
-    
-    return OCRResponse(
-        success=result["success"],
-        text=result.get("text"),
-        source_language=result["source_language"],
-        model=result["model"],
-        error=result.get("error")
-    )
-
-
-@router.post("/{manga_id}/{chapter_id}/{page_id}/translate", response_model=OCRResponse)
-async def translate_text_from_page(
-    manga_id: int,
-    chapter_id: int,
-    page_id: int,
-    ocr_request: OCRRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Extract and translate text from a manga page image using OCR.
-    
-    This endpoint uses Ollama with Qwen2.5-VL model to extract and translate text from the image.
-    It can read Japanese text and translate it to English (or other specified languages).
-    The model handles around 85-90% accuracy with Japanese text in images.
-    """
-    if not ocr_service.enabled:
-        raise HTTPException(status_code=503, detail="OCR service is not enabled")
-    
-    if not ocr_service.is_available():
-        raise HTTPException(status_code=503, detail="OCR service is not available")
-    
-    # Verify page exists and belongs to the correct manga/chapter
-    result = await db.execute(
-        select(Page, Chapter, Manga)
-        .join(Chapter, Page.chapter_id == Chapter.id)
-        .join(Manga, Chapter.manga_id == Manga.id)
-        .where(
-            Page.id == page_id,
-            Chapter.id == chapter_id,
-            Manga.id == manga_id
+        
+        page_data = result.first()
+        if not page_data:
+            raise HTTPException(
+                status_code=404,
+                detail="Page not found or IDs do not match"
+            )
+        
+        page, chapter, manga = page_data
+        image_path = page.file_path
+        
+        # Get OCR service
+        ocr_service = get_ocr_service()
+        
+        # Extract text from the selected region
+        logger.info(f"Processing OCR for region: ({request.x}, {request.y}, {request.width}, {request.height})")
+        japanese_text = ocr_service.process_region(
+            image_path,
+            (request.x, request.y, request.width, request.height)
         )
-    )
-    
-    page_data = result.first()
-    if not page_data:
-        raise HTTPException(status_code=404, detail="Page not found")
-    
-    page, chapter, manga = page_data
-    
-    # Default target language to English if not specified
-    target_language = ocr_request.target_language or "English"
-    
-    # Extract and translate text from the page image
-    result = await ocr_service.extract_and_translate(
-        image_path=page.file_path,
-        source_language=ocr_request.source_language,
-        target_language=target_language,
-        prompt=ocr_request.custom_prompt
-    )
-    
-    return OCRResponse(
-        success=result["success"],
-        original_text=result.get("original_text"),
-        translated_text=result.get("translated_text"),
-        source_language=result["source_language"],
-        target_language=result.get("target_language"),
-        model=result["model"],
-        error=result.get("error")
-    )
+        
+        if not japanese_text or not japanese_text.strip():
+            return OcrResponse(
+                original="",
+                reading="",
+                translation="No text detected in the selected region",
+                kanji_breakdown=[],
+                notes="Try selecting a region with visible text"
+            )
+        
+        logger.info(f"OCR extracted text: {japanese_text}")
+        
+        # Translate using Ollama
+        translator = get_translator_service()
+        translation_result = translator.translate(japanese_text)
+        
+        # Parse kanji breakdown
+        kanji_breakdown = []
+        if "kanji_breakdown" in translation_result:
+            for item in translation_result["kanji_breakdown"]:
+                kanji_breakdown.append(KanjiBreakdown(
+                    kanji=item.get("kanji", ""),
+                    reading=item.get("reading", ""),
+                    meaning=item.get("meaning", "")
+                ))
+        
+        return OcrResponse(
+            original=translation_result.get("original", japanese_text),
+            reading=translation_result.get("reading", ""),
+            translation=translation_result.get("translation", "Translation unavailable"),
+            kanji_breakdown=kanji_breakdown,
+            notes=translation_result.get("notes")
+        )
+        
+    except RuntimeError as e:
+        logger.error(f"OCR service error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="OCR service is not available. Please ensure manga-ocr is installed."
+        )
+    except Exception as e:
+        logger.error(f"Error processing OCR request: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process OCR request: {str(e)}"
+        )

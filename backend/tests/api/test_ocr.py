@@ -1,344 +1,251 @@
-"""
-API tests for OCR endpoints
-"""
 import pytest
-from unittest.mock import patch, AsyncMock
-from httpx import AsyncClient
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from fastapi import HTTPException
 
-from app.models import User, Manga, Chapter, Page
-
-
-pytestmark = pytest.mark.asyncio
+from app.api.ocr import process_ocr, OcrRequest
 
 
-class TestOCRStatusEndpoint:
-    """Test cases for OCR status endpoint"""
+@pytest.mark.asyncio
+async def test_process_ocr_success(mock_current_user, test_db, test_manga, test_chapter):
+    """Test successful OCR processing"""
+    # Get a page from the test chapter
+    from sqlalchemy import select
+    from app.models import Page
     
-    async def test_get_status_enabled(self, authenticated_client: AsyncClient):
-        """Test getting OCR status when enabled"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.model = "qwen2.5-vl:7b"
-            mock_service.base_url = "http://localhost:11434"
-            
-            response = await authenticated_client.get("/api/ocr/status")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["enabled"] is True
-            assert data["available"] is True
-            assert data["model"] == "qwen2.5-vl:7b"
-            assert data["base_url"] == "http://localhost:11434"
+    result = await test_db.execute(
+        select(Page).where(Page.chapter_id == test_chapter.id).limit(1)
+    )
+    page = result.scalar_one()
     
-    async def test_get_status_disabled(self, authenticated_client: AsyncClient):
-        """Test getting OCR status when disabled"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = False
-            mock_service.is_available.return_value = False
-            
-            response = await authenticated_client.get("/api/ocr/status")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["enabled"] is False
-            assert data["available"] is False
-            assert data["model"] is None
-
-
-class TestOCRExtractEndpoint:
-    """Test cases for OCR text extraction endpoint"""
+    # Mock OCR service
+    mock_ocr_service = Mock()
+    mock_ocr_service.process_region = Mock(return_value="こんにちは")
     
-    async def test_extract_text_success(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test successful text extraction"""
-        # Get the first page
-        page_id = 1
+    # Mock translator service
+    mock_translator_service = Mock()
+    mock_translator_service.translate = Mock(return_value={
+        "original": "こんにちは",
+        "reading": "konnichiwa",
+        "translation": "Hello",
+        "kanji_breakdown": [],
+        "notes": "Common greeting"
+    })
+    
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=page.id,
+        x=100,
+        y=100,
+        width=200,
+        height=50
+    )
+    
+    with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
         
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.model = "qwen2.5-vl:7b"
-            
-            # Mock extract_text method
-            mock_service.extract_text = AsyncMock(return_value={
-                "success": True,
-                "text": "こんにちは世界",
-                "source_language": "Japanese",
-                "model": "qwen2.5-vl:7b"
-            })
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/{page_id}/extract",
-                json={
-                    "source_language": "Japanese"
-                }
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["text"] == "こんにちは世界"
-            assert data["source_language"] == "Japanese"
-            assert data["model"] == "qwen2.5-vl:7b"
-            
-            # Verify the service was called
-            mock_service.extract_text.assert_called_once()
+        result = await process_ocr(request, mock_current_user, test_db)
+        
+        assert result.original == "こんにちは"
+        assert result.reading == "konnichiwa"
+        assert result.translation == "Hello"
+        assert result.notes == "Common greeting"
+        mock_ocr_service.process_region.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_page_not_found(mock_current_user, test_db, test_manga, test_chapter):
+    """Test OCR with non-existent page"""
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=99999,  # Non-existent page
+        x=100,
+        y=100,
+        width=200,
+        height=50
+    )
     
-    async def test_extract_text_not_authenticated(
-        self, 
-        client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test extraction fails without authentication"""
-        response = await client.post(
-            f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/extract",
-            json={"source_language": "Japanese"}
+    with pytest.raises(HTTPException) as exc_info:
+        await process_ocr(request, mock_current_user, test_db)
+    
+    assert exc_info.value.status_code == 404
+    assert "Page not found" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_no_text_detected(mock_current_user, test_db, test_manga, test_chapter):
+    """Test OCR when no text is detected"""
+    from sqlalchemy import select
+    from app.models import Page
+    
+    result = await test_db.execute(
+        select(Page).where(Page.chapter_id == test_chapter.id).limit(1)
+    )
+    page = result.scalar_one()
+    
+    mock_ocr_service = Mock()
+    mock_ocr_service.process_region = Mock(return_value="")
+    
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=page.id,
+        x=100,
+        y=100,
+        width=200,
+        height=50
+    )
+    
+    with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service):
+        result = await process_ocr(request, mock_current_user, test_db)
+        
+        assert result.original == ""
+        assert result.translation == "No text detected in the selected region"
+        assert "Try selecting a region with visible text" in result.notes
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_with_kanji_breakdown(mock_current_user, test_db, test_manga, test_chapter):
+    """Test OCR with kanji breakdown"""
+    from sqlalchemy import select
+    from app.models import Page
+    
+    result = await test_db.execute(
+        select(Page).where(Page.chapter_id == test_chapter.id).limit(1)
+    )
+    page = result.scalar_one()
+    
+    mock_ocr_service = Mock()
+    mock_ocr_service.process_region = Mock(return_value="漫画")
+    
+    mock_translator_service = Mock()
+    mock_translator_service.translate = Mock(return_value={
+        "original": "漫画",
+        "reading": "manga",
+        "translation": "manga/comic",
+        "kanji_breakdown": [
+            {"kanji": "漫", "reading": "man", "meaning": "random, rambling"},
+            {"kanji": "画", "reading": "ga", "meaning": "picture, drawing"}
+        ],
+        "notes": None
+    })
+    
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=page.id,
+        x=50,
+        y=50,
+        width=100,
+        height=30
+    )
+    
+    with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
+        
+        result = await process_ocr(request, mock_current_user, test_db)
+        
+        assert result.original == "漫画"
+        assert result.translation == "manga/comic"
+        assert len(result.kanji_breakdown) == 2
+        assert result.kanji_breakdown[0].kanji == "漫"
+        assert result.kanji_breakdown[0].reading == "man"
+        assert result.kanji_breakdown[1].kanji == "画"
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_service_unavailable(mock_current_user, test_db, test_manga, test_chapter):
+    """Test OCR when service is unavailable"""
+    from sqlalchemy import select
+    from app.models import Page
+    
+    result = await test_db.execute(
+        select(Page).where(Page.chapter_id == test_chapter.id).limit(1)
+    )
+    page = result.scalar_one()
+    
+    mock_ocr_service = Mock()
+    mock_ocr_service.process_region = Mock(side_effect=RuntimeError("OCR service not available"))
+    
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=page.id,
+        x=100,
+        y=100,
+        width=200,
+        height=50
+    )
+    
+    with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service):
+        with pytest.raises(HTTPException) as exc_info:
+            await process_ocr(request, mock_current_user, test_db)
+        
+        assert exc_info.value.status_code == 503
+        assert "OCR service is not available" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_translation_error(mock_current_user, test_db, test_manga, test_chapter):
+    """Test OCR when translation service fails"""
+    from sqlalchemy import select
+    from app.models import Page
+    
+    result = await test_db.execute(
+        select(Page).where(Page.chapter_id == test_chapter.id).limit(1)
+    )
+    page = result.scalar_one()
+    
+    mock_ocr_service = Mock()
+    mock_ocr_service.process_region = Mock(return_value="テスト")
+    
+    mock_translator_service = Mock()
+    mock_translator_service.translate = Mock(side_effect=Exception("Translation failed"))
+    
+    request = OcrRequest(
+        manga_id=test_manga.id,
+        chapter_id=test_chapter.id,
+        page_id=page.id,
+        x=100,
+        y=100,
+        width=200,
+        height=50
+    )
+    
+    with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
+        
+        with pytest.raises(HTTPException) as exc_info:
+            await process_ocr(request, mock_current_user, test_db)
+        
+        assert exc_info.value.status_code == 500
+        assert "Failed to process OCR request" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_process_ocr_invalid_coordinates(mock_current_user):
+    """Test OCR with invalid coordinates (should be validated by Pydantic)"""
+    # Test negative x coordinate
+    with pytest.raises(ValueError):
+        OcrRequest(
+            manga_id=1,
+            chapter_id=1,
+            page_id=1,
+            x=-10,
+            y=100,
+            width=200,
+            height=50
         )
-        
-        assert response.status_code == 401
     
-    async def test_extract_text_service_disabled(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test extraction fails when service is disabled"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = False
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/extract",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 503
-            assert "not enabled" in response.json()["detail"].lower()
-    
-    async def test_extract_text_service_unavailable(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test extraction fails when service is unavailable"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = False
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/extract",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 503
-            assert "not available" in response.json()["detail"].lower()
-    
-    async def test_extract_text_page_not_found(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test extraction fails for non-existent page"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/9999/extract",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 404
-    
-    async def test_extract_text_custom_prompt(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test extraction with custom prompt"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.extract_text = AsyncMock(return_value={
-                "success": True,
-                "text": "Custom extracted text",
-                "source_language": "Japanese",
-                "model": "qwen2.5-vl:7b"
-            })
-            
-            custom_prompt = "Extract text in a special format"
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/extract",
-                json={
-                    "source_language": "Japanese",
-                    "custom_prompt": custom_prompt
-                }
-            )
-            
-            assert response.status_code == 200
-            
-            # Verify custom prompt was passed
-            call_kwargs = mock_service.extract_text.call_args[1]
-            assert call_kwargs["prompt"] == custom_prompt
-
-
-class TestOCRTranslateEndpoint:
-    """Test cases for OCR translation endpoint"""
-    
-    async def test_translate_text_success(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test successful text translation"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.model = "qwen2.5-vl:7b"
-            
-            mock_service.extract_and_translate = AsyncMock(return_value={
-                "success": True,
-                "original_text": "こんにちは世界",
-                "translated_text": "Hello World",
-                "source_language": "Japanese",
-                "target_language": "English",
-                "model": "qwen2.5-vl:7b"
-            })
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/translate",
-                json={
-                    "source_language": "Japanese",
-                    "target_language": "English"
-                }
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert data["original_text"] == "こんにちは世界"
-            assert data["translated_text"] == "Hello World"
-            assert data["source_language"] == "Japanese"
-            assert data["target_language"] == "English"
-    
-    async def test_translate_text_default_target_language(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test translation with default target language"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.extract_and_translate = AsyncMock(return_value={
-                "success": True,
-                "original_text": "こんにちは",
-                "translated_text": "Hello",
-                "source_language": "Japanese",
-                "target_language": "English",
-                "model": "qwen2.5-vl:7b"
-            })
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/translate",
-                json={
-                    "source_language": "Japanese"
-                    # No target_language specified
-                }
-            )
-            
-            assert response.status_code == 200
-            
-            # Verify default target language was used (English)
-            call_kwargs = mock_service.extract_and_translate.call_args[1]
-            assert call_kwargs["target_language"] == "English"
-    
-    async def test_translate_text_not_authenticated(
-        self, 
-        client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test translation fails without authentication"""
-        response = await client.post(
-            f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/translate",
-            json={"source_language": "Japanese"}
+    # Test zero width
+    with pytest.raises(ValueError):
+        OcrRequest(
+            manga_id=1,
+            chapter_id=1,
+            page_id=1,
+            x=100,
+            y=100,
+            width=0,
+            height=50
         )
-        
-        assert response.status_code == 401
-    
-    async def test_translate_text_service_disabled(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test translation fails when service is disabled"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = False
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/translate",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 503
-    
-    async def test_translate_text_page_not_found(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test translation fails for non-existent page"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/9999/translate",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 404
-    
-    async def test_translate_text_error_handling(
-        self, 
-        authenticated_client: AsyncClient,
-        test_manga: Manga,
-        test_chapter: Chapter
-    ):
-        """Test translation handles errors gracefully"""
-        with patch('app.api.ocr.ocr_service') as mock_service:
-            mock_service.enabled = True
-            mock_service.is_available.return_value = True
-            mock_service.extract_and_translate = AsyncMock(return_value={
-                "success": False,
-                "error": "OCR processing failed",
-                "original_text": "",
-                "translated_text": "",
-                "source_language": "Japanese",
-                "target_language": "English",
-                "model": "qwen2.5-vl:7b"
-            })
-            
-            response = await authenticated_client.post(
-                f"/api/ocr/{test_manga.id}/{test_chapter.id}/1/translate",
-                json={"source_language": "Japanese"}
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is False
-            assert "error" in data

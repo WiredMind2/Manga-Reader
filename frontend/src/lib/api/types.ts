@@ -156,3 +156,29 @@ export interface RecentRead {
     reading_direction: ReadingDirection
   }
 }
+
+// OCR and Translation types
+export interface OcrRequest {
+  manga_id: number
+  chapter_id: number
+  page_id: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface KanjiBreakdown {
+  kanji: string
+  reading: string
+  meaning: string
+}
+
+export interface OcrResponse {
+  original: string
+  reading: string
+  translation: string
+  kanji_breakdown: KanjiBreakdown[]
+  notes?: string
+  error?: string
+}
