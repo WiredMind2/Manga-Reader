@@ -5,20 +5,38 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Import providers with graceful fallback
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+    logger.warning("ollama package not installed. Ollama provider will not be available.")
+
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logger.warning("httpx package not installed. OpenRouter provider will not be available.")
+
 
 class TranslatorService:
     def __init__(self):
         self.provider = settings.TRANSLATION_PROVIDER.lower()
         
         if self.provider == "ollama":
-            import ollama
+            if not OLLAMA_AVAILABLE:
+                raise RuntimeError("Ollama provider selected but ollama package is not installed")
             self.client = ollama.Client(host=settings.OLLAMA_HOST)
             self.model = settings.OLLAMA_MODEL
         elif self.provider == "openrouter":
+            if not HTTPX_AVAILABLE:
+                raise RuntimeError("OpenRouter provider selected but httpx package is not installed")
+            if not settings.OPENROUTER_API_KEY:
+                raise ValueError("OpenRouter provider selected but OPENROUTER_API_KEY is not configured")
             self.api_key = settings.OPENROUTER_API_KEY
             self.model = settings.OPENROUTER_MODEL
-            if not self.api_key:
-                logger.warning("OpenRouter API key not configured")
         else:
             raise ValueError(f"Unsupported translation provider: {self.provider}")
 
@@ -53,11 +71,6 @@ class TranslatorService:
 
     def _translate_openrouter(self, text: str) -> dict:
         """Translate using OpenRouter API"""
-        import httpx
-        
-        if not self.api_key:
-            return self._error_response(text, "OpenRouter API key not configured")
-        
         prompt = self._build_prompt(text)
         
         try:
