@@ -42,7 +42,7 @@ async def test_process_ocr_success(mock_current_user, test_db, test_manga, test_
     )
     
     with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
-         patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
         
         result = await process_ocr(request, mock_current_user, test_db)
         
@@ -142,7 +142,7 @@ async def test_process_ocr_with_kanji_breakdown(mock_current_user, test_db, test
     )
     
     with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
-         patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
         
         result = await process_ocr(request, mock_current_user, test_db)
         
@@ -214,7 +214,7 @@ async def test_process_ocr_translation_error(mock_current_user, test_db, test_ma
     )
     
     with patch('app.api.ocr.get_ocr_service', return_value=mock_ocr_service), \
-         patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
+          patch('app.api.ocr.get_translator_service', return_value=mock_translator_service):
         
         with pytest.raises(HTTPException) as exc_info:
             await process_ocr(request, mock_current_user, test_db)

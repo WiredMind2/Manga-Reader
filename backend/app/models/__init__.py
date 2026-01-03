@@ -108,5 +108,11 @@ class UserPreference(Base):
     theme = Column(String(20), default="dark")  # dark, light, auto
     items_per_page = Column(Integer, default=20)
     
+    # OCR/Translation preferences
+    ocr_enabled = Column(Boolean, default=False)  # Enable OCR features
+    ocr_auto_translate = Column(Boolean, default=False)  # Auto-translate on page load
+    ocr_source_language = Column(String(50), default="Japanese")  # Default source language
+    ocr_target_language = Column(String(50), default="English")  # Default target language
+    
     # Relationships
     user = relationship("User", back_populates="user_preferences")

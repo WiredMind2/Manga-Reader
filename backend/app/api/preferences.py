@@ -30,7 +30,11 @@ async def get_user_preferences(
             auto_next_chapter=True,
             page_fit_mode="fit-width",
             theme="dark",
-            items_per_page=20
+            items_per_page=20,
+            ocr_enabled=False,
+            ocr_auto_translate=False,
+            ocr_source_language="Japanese",
+            ocr_target_language="English"
         )
         db.add(preferences)
         await db.commit()
@@ -43,7 +47,11 @@ async def get_user_preferences(
         auto_next_chapter=preferences.auto_next_chapter,
         page_fit_mode=preferences.page_fit_mode,
         theme=preferences.theme,
-        items_per_page=preferences.items_per_page
+        items_per_page=preferences.items_per_page,
+        ocr_enabled=preferences.ocr_enabled,
+        ocr_auto_translate=preferences.ocr_auto_translate,
+        ocr_source_language=preferences.ocr_source_language,
+        ocr_target_language=preferences.ocr_target_language
     )
 
 
@@ -67,7 +75,11 @@ async def update_user_preferences(
             auto_next_chapter=preferences_update.auto_next_chapter if preferences_update.auto_next_chapter is not None else True,
             page_fit_mode=preferences_update.page_fit_mode or "fit-width",
             theme=preferences_update.theme or "dark",
-            items_per_page=preferences_update.items_per_page or 20
+            items_per_page=preferences_update.items_per_page or 20,
+            ocr_enabled=preferences_update.ocr_enabled if preferences_update.ocr_enabled is not None else False,
+            ocr_auto_translate=preferences_update.ocr_auto_translate if preferences_update.ocr_auto_translate is not None else False,
+            ocr_source_language=preferences_update.ocr_source_language or "Japanese",
+            ocr_target_language=preferences_update.ocr_target_language or "English"
         )
         db.add(preferences)
     else:
@@ -89,7 +101,11 @@ async def update_user_preferences(
         auto_next_chapter=preferences.auto_next_chapter,
         page_fit_mode=preferences.page_fit_mode,
         theme=preferences.theme,
-        items_per_page=preferences.items_per_page
+        items_per_page=preferences.items_per_page,
+        ocr_enabled=preferences.ocr_enabled,
+        ocr_auto_translate=preferences.ocr_auto_translate,
+        ocr_source_language=preferences.ocr_source_language,
+        ocr_target_language=preferences.ocr_target_language
     )
 
 
@@ -111,6 +127,10 @@ async def reset_user_preferences(
         preferences.page_fit_mode = "fit-width"
         preferences.theme = "dark"
         preferences.items_per_page = 20
+        preferences.ocr_enabled = False
+        preferences.ocr_auto_translate = False
+        preferences.ocr_source_language = "Japanese"
+        preferences.ocr_target_language = "English"
         
         await db.commit()
         await db.refresh(preferences)
@@ -122,7 +142,11 @@ async def reset_user_preferences(
             auto_next_chapter=preferences.auto_next_chapter,
             page_fit_mode=preferences.page_fit_mode,
             theme=preferences.theme,
-            items_per_page=preferences.items_per_page
+            items_per_page=preferences.items_per_page,
+            ocr_enabled=preferences.ocr_enabled,
+            ocr_auto_translate=preferences.ocr_auto_translate,
+            ocr_source_language=preferences.ocr_source_language,
+            ocr_target_language=preferences.ocr_target_language
         )
     
     return {"message": "No preferences found to reset"}

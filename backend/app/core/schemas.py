@@ -240,6 +240,10 @@ class UserPreferenceUpdate(BaseModel):
     page_fit_mode: Optional[str] = Field(None, pattern="^(fit-width|fit-height|original)$") 
     theme: Optional[str] = Field(None, pattern="^(dark|light|auto)$")
     items_per_page: Optional[int] = Field(None, ge=5, le=100)
+    ocr_enabled: Optional[bool] = None
+    ocr_auto_translate: Optional[bool] = None
+    ocr_source_language: Optional[str] = None
+    ocr_target_language: Optional[str] = None
 
 
 class UserPreferenceResponse(BaseModel):
@@ -250,6 +254,10 @@ class UserPreferenceResponse(BaseModel):
     page_fit_mode: str
     theme: str
     items_per_page: int
+    ocr_enabled: bool
+    ocr_auto_translate: bool
+    ocr_source_language: str
+    ocr_target_language: str
     
     class Config:
         from_attributes = True

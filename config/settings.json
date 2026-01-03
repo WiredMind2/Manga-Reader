@@ -27,5 +27,11 @@
     "ollama_model": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0",
     "openrouter_api_key": "",
     "openrouter_model": "anthropic/claude-3.5-sonnet"
+  },
+  "ollama": {
+    "enabled": false,
+    "base_url": "http://localhost:11434",
+    "model": "qwen2.5-vl:7b",
+    "timeout": 60
   }
 }

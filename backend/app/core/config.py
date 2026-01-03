@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
+    
+    # OCR/Translation with Ollama
+    OLLAMA_ENABLED: bool = False
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-vl:7b"
+    OLLAMA_TIMEOUT: int = 60  # seconds
 
     # OCR & Translation
     TRANSLATION_PROVIDER: str = "ollama"  # "ollama" or "openrouter"
