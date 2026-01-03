@@ -39,8 +39,11 @@ class Settings(BaseSettings):
     MAX_PAGE_SIZE: int = 100
 
     # OCR & Translation
+    TRANSLATION_PROVIDER: str = "ollama"  # "ollama" or "openrouter"
     OLLAMA_HOST: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3"  # User can override this via env var
+    OLLAMA_MODEL: str = "llama3"
+    OPENROUTER_API_KEY: str = ""  # OpenRouter API key
+    OPENROUTER_MODEL: str = "anthropic/claude-3.5-sonnet"  # Default OpenRouter model
 
     class Config:
         env_file = ".env"
@@ -82,7 +85,12 @@ class Settings(BaseSettings):
                     "default_reading_direction": "DEFAULT_READING_DIRECTION",
                     "cors_origins": "CORS_ORIGINS",
                     "pagination.default_page_size": "DEFAULT_PAGE_SIZE",
-                    "pagination.max_page_size": "MAX_PAGE_SIZE"
+                    "pagination.max_page_size": "MAX_PAGE_SIZE",
+                    "ocr.translation_provider": "TRANSLATION_PROVIDER",
+                    "ocr.ollama_host": "OLLAMA_HOST",
+                    "ocr.ollama_model": "OLLAMA_MODEL",
+                    "ocr.openrouter_api_key": "OPENROUTER_API_KEY",
+                    "ocr.openrouter_model": "OPENROUTER_MODEL"
                 }
                 
                 for config_key, attr_name in mapping.items():

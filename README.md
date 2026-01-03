@@ -72,7 +72,9 @@ manga/
 - Python 3.9+
 - Node.js 18+
 - pnpm (recommended) or npm
-- Ollama (for OCR translation feature) - [Install from ollama.ai](https://ollama.ai)
+- **For OCR Translation**: Either Ollama (local) or OpenRouter API key (cloud)
+  - Ollama: [Install from ollama.ai](https://ollama.ai)
+  - OpenRouter: [Get API key from openrouter.ai](https://openrouter.ai)
 
 ### Backend Setup
 ```bash
@@ -89,8 +91,9 @@ pnpm dev
 ```
 
 ### OCR Translation Setup (Optional)
-To enable the OCR translation feature for Japanese manga:
+To enable the OCR translation feature for Japanese manga, you have two options:
 
+#### Option 1: Ollama (Local, Free)
 1. Install Ollama from [ollama.ai](https://ollama.ai)
 2. Pull a Japanese-capable model:
    ```bash
@@ -100,17 +103,34 @@ To enable the OCR translation feature for Japanese manga:
    ```bash
    ollama serve
    ```
-4. Configure the Ollama settings in `config/settings.json` or via environment variables:
+4. Configure in `config/settings.json`:
    ```json
    {
-     "ollama_host": "http://localhost:11434",
-     "ollama_model": "llama3"
+     "ocr": {
+       "translation_provider": "ollama",
+       "ollama_host": "http://localhost:11434",
+       "ollama_model": "llama3"
+     }
    }
    ```
 
-The OCR feature uses:
-- **manga-ocr**: For extracting Japanese text from manga images
-- **Ollama**: For translating Japanese to English with kanji breakdown and cultural notes
+#### Option 2: OpenRouter (Cloud, Requires API Key)
+1. Get an API key from [openrouter.ai](https://openrouter.ai)
+2. Configure in `config/settings.json`:
+   ```json
+   {
+     "ocr": {
+       "translation_provider": "openrouter",
+       "openrouter_api_key": "sk-or-v1-...",
+       "openrouter_model": "anthropic/claude-3.5-sonnet"
+     }
+   }
+   ```
+
+**Note**: You can also set these via environment variables:
+- `TRANSLATION_PROVIDER=openrouter`
+- `OPENROUTER_API_KEY=sk-or-v1-...`
+- `OPENROUTER_MODEL=anthropic/claude-3.5-sonnet`
 
 ### Configuration
 1. Copy `config/settings.example.json` to `config/settings.json`

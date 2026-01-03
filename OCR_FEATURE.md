@@ -88,9 +88,11 @@ This document describes the OCR (Optical Character Recognition) and translation 
    - Crops image to selected region before processing
 
 2. **Translator Service** (`backend/app/services/translator.py`)
-   - Uses Ollama AI for translation
-   - Configured model (default: llama3)
-   - Returns structured JSON response
+   - Supports two translation providers:
+     - **Ollama**: Local AI translation (free, requires Ollama installation)
+     - **OpenRouter**: Cloud API translation (paid, requires API key)
+   - Provider configurable via settings
+   - Returns structured JSON response with kanji breakdown
    - Includes error handling with fallback responses
 
 3. **OCR API Router** (`backend/app/api/ocr.py`)
@@ -127,24 +129,41 @@ This document describes the OCR (Optical Character Recognition) and translation 
 ### Backend Settings
 File: `config/settings.json`
 
+#### Ollama Configuration (Local)
 ```json
 {
   "ocr": {
+    "translation_provider": "ollama",
     "ollama_host": "http://localhost:11434",
     "ollama_model": "llama3"
   }
 }
 ```
 
+#### OpenRouter Configuration (Cloud)
+```json
+{
+  "ocr": {
+    "translation_provider": "openrouter",
+    "openrouter_api_key": "sk-or-v1-...",
+    "openrouter_model": "anthropic/claude-3.5-sonnet"
+  }
+}
+```
+
 Environment variables:
+- `TRANSLATION_PROVIDER`: Translation service to use ("ollama" or "openrouter")
 - `OLLAMA_HOST`: URL to Ollama server (default: http://localhost:11434)
-- `OLLAMA_MODEL`: Model to use for translation (default: llama3)
+- `OLLAMA_MODEL`: Ollama model to use (default: llama3)
+- `OPENROUTER_API_KEY`: OpenRouter API key
+- `OPENROUTER_MODEL`: OpenRouter model to use (default: anthropic/claude-3.5-sonnet)
 
 ### Dependencies
 
 **Backend** (`requirements.txt`):
 - `manga-ocr`: Japanese OCR specialized for manga
-- `ollama`: Python client for Ollama API
+- `ollama`: Python client for Ollama API (for Ollama provider)
+- `httpx`: HTTP client (for OpenRouter provider)
 - `Pillow`: Image processing
 
 **Frontend** (built-in):
@@ -181,13 +200,24 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### Running Ollama
+#### Running Translation Service
+
+You have two options for the translation backend:
+
+**Option 1: Ollama (Local)**
 ```bash
 # Install Ollama from ollama.ai
 ollama serve
 
 # Pull a model
 ollama pull llama3
+```
+
+**Option 2: OpenRouter (Cloud)**
+```bash
+# Get API key from openrouter.ai
+# Set in config/settings.json or environment variable
+export OPENROUTER_API_KEY="sk-or-v1-..."
 ```
 
 #### Running Tests
