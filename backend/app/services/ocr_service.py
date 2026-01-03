@@ -7,6 +7,8 @@ import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
 import io
+import zipfile
+import rarfile
 
 from PIL import Image
 import ollama
@@ -194,24 +196,39 @@ class OllamaOCRService:
         try:
             # Handle archive paths (format: archive_path:internal_path)
             if ':' in image_path:
-                # For now, we'll need to extract from archive
-                # This is handled by ImageOptimizer, so we'll use a temporary approach
-                from app.api.images import image_optimizer
-                # This is a workaround - in production, you'd want to handle this better
-                raise ValueError("Archive paths not yet supported for OCR")
-            
-            # Load image
-            image = Image.open(image_path)
+                # Extract from archive
+                archive_extensions = ['.zip', '.cbz', '.rar', '.cbr']
+                colon_idx = -1
+                
+                for ext in archive_extensions:
+                    ext_pos = image_path.lower().find(ext + ':')
+                    if ext_pos != -1:
+                        colon_idx = ext_pos + len(ext)
+                        break
+                
+                if colon_idx > 0:
+                    archive_path = image_path[:colon_idx]
+                    internal_path = image_path[colon_idx + 1:]
+                    
+                    # Load image from archive
+                    if archive_path.lower().endswith(('.zip', '.cbz')):
+                        with zipfile.ZipFile(archive_path, 'r') as archive:
+                            with archive.open(internal_path) as image_file:
+                                image = Image.open(io.BytesIO(image_file.read()))
+                    elif archive_path.lower().endswith(('.rar', '.cbr')):
+                        with rarfile.RarFile(archive_path, 'r') as archive:
+                            with archive.open(internal_path) as image_file:
+                                image = Image.open(io.BytesIO(image_file.read()))
+                    else:
+                        raise ValueError(f"Unsupported archive format: {archive_path}")
+                else:
+                    raise ValueError(f"Invalid archive path format: {image_path}")
+            else:
+                # Load regular file
+                image = Image.open(image_path)
             
             # Convert to RGB if necessary
-            if image.mode in ('RGBA', 'P', 'LA'):
-                background = Image.new('RGB', image.size, (255, 255, 255))
-                if image.mode == 'P':
-                    image = image.convert('RGBA')
-                background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
-                image = background
-            elif image.mode != 'RGB':
-                image = image.convert('RGB')
+            image = self._convert_to_rgb(image)
             
             # Convert to bytes
             img_byte_arr = io.BytesIO()
@@ -224,6 +241,26 @@ class OllamaOCRService:
         except Exception as e:
             logger.error(f"Error preparing image: {e}")
             raise
+    
+    def _convert_to_rgb(self, image: Image.Image) -> Image.Image:
+        """
+        Convert image to RGB format if necessary.
+        
+        Args:
+            image: PIL Image object
+            
+        Returns:
+            RGB PIL Image object
+        """
+        if image.mode in ('RGBA', 'P', 'LA'):
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+            return background
+        elif image.mode != 'RGB':
+            return image.convert('RGB')
+        return image
 
 
 # Global service instance

@@ -214,3 +214,34 @@ class TestOllamaOCRService:
         
         with pytest.raises(Exception):
             service._prepare_image("/nonexistent/path/image.jpg")
+    
+    def test_convert_to_rgb_rgba(self, mock_settings_enabled, mock_ollama_client, test_image_path):
+        """Test converting RGBA image to RGB"""
+        service = OllamaOCRService()
+        
+        # Create RGBA image
+        img = Image.new('RGBA', (100, 100), color=(255, 0, 0, 128))
+        result = service._convert_to_rgb(img)
+        
+        assert result.mode == 'RGB'
+        assert result.size == (100, 100)
+    
+    def test_convert_to_rgb_palette(self, mock_settings_enabled, mock_ollama_client):
+        """Test converting palette image to RGB"""
+        service = OllamaOCRService()
+        
+        # Create palette image
+        img = Image.new('P', (100, 100))
+        result = service._convert_to_rgb(img)
+        
+        assert result.mode == 'RGB'
+    
+    def test_convert_to_rgb_already_rgb(self, mock_settings_enabled, mock_ollama_client):
+        """Test that RGB image is returned unchanged"""
+        service = OllamaOCRService()
+        
+        img = Image.new('RGB', (100, 100), color=(255, 0, 0))
+        result = service._convert_to_rgb(img)
+        
+        assert result.mode == 'RGB'
+        assert result is img  # Should be same object
