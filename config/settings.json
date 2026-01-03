@@ -24,7 +24,7 @@
   "ocr": {
     "translation_provider": "ollama",
     "ollama_host": "http://localhost:11434",
-    "ollama_model": "llama3",
+    "ollama_model": "7shi/gemma-2-jpn-translate:2b-instruct-q8_0",
     "openrouter_api_key": "",
     "openrouter_model": "anthropic/claude-3.5-sonnet"
   }
