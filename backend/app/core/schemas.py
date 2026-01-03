@@ -150,5 +150,3 @@ class PaginatedResponse(BaseModel):
     page: int
     size: int
     pages: int
-
-    pages: int
