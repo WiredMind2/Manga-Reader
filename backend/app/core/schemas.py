@@ -121,6 +121,28 @@ class ReadingProgressResponse(BaseModel):
         from_attributes = True
 
 
+# User Preference schemas
+class UserPreferenceUpdate(BaseModel):
+    default_reading_direction: Optional[str] = Field(None, pattern="^(rtl|ltr|ttb)$")
+    auto_next_chapter: Optional[bool] = None
+    page_fit_mode: Optional[str] = Field(None, pattern="^(fit-width|fit-height|original)$")
+    theme: Optional[str] = Field(None, pattern="^(dark|light|auto)$")
+    items_per_page: Optional[int] = Field(None, ge=5, le=100)
+
+
+class UserPreferenceResponse(BaseModel):
+    id: int
+    user_id: int
+    default_reading_direction: str
+    auto_next_chapter: bool
+    page_fit_mode: str
+    theme: str
+    items_per_page: int
+    
+    class Config:
+        from_attributes = True
+
+
 # Pagination schemas
 class PaginatedResponse(BaseModel):
     items: List[Any]
