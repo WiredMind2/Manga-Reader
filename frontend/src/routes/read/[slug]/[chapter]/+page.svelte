@@ -3,8 +3,9 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { apiClient } from '$lib/api/client'
-  import type { MangaDetail, Chapter, Page, ReadingProgress, ReadingDirection } from '$lib/api/types'
+  import type { MangaDetail, Chapter, Page, ReadingProgress, ReadingDirection, OcrResponse } from '$lib/api/types'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
+  import TranslationPanel from '$lib/components/TranslationPanel.svelte'
 
   export let data: { manga: MangaDetail; chapters: Chapter[]; chapter: Chapter; pages: Page[] }
 
@@ -16,6 +17,16 @@
   let autoHideTimer: number | null = null
   let pageContainer: HTMLElement
   let progress: ReadingProgress | null = null
+  
+  // OCR mode variables
+  let ocrMode = false
+  let isSelecting = false
+  let selectionStart: { x: number; y: number } | null = null
+  let selectionEnd: { x: number; y: number } | null = null
+  let ocrLoading = false
+  let translationResult: OcrResponse | null = null
+  let showTranslationPanel = false
+  let imageElement: HTMLImageElement | null = null
 
   $: manga = data.manga
   $: chapters = data.chapters
@@ -27,6 +38,16 @@
   $: currentChapterIndex = chapters.findIndex(c => c.id === chapter.id)
   $: previousChapter = currentChapterIndex > 0 ? chapters[currentChapterIndex - 1] : null
   $: nextChapter = currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1] : null
+
+  $: selectionRect = (ocrMode && selectionStart && selectionEnd) ? {
+    x: Math.min(selectionStart.x, selectionEnd.x),
+    y: Math.min(selectionStart.y, selectionEnd.y),
+    width: Math.abs(selectionEnd.x - selectionStart.x),
+    height: Math.abs(selectionEnd.y - selectionStart.y)
+  } : null
+
+  $: selectionStyle = selectionRect ? 
+    `left: ${selectionRect.x}px; top: ${selectionRect.y}px; width: ${selectionRect.width}px; height: ${selectionRect.height}px;` : ''
 
   // Load reading progress
   async function loadProgress() {
@@ -127,6 +148,104 @@
     saveProgress()
   }
 
+  // OCR mode functions
+  function toggleOcrMode() {
+    ocrMode = !ocrMode
+    if (!ocrMode) {
+      // Clear selection when exiting OCR mode
+      selectionStart = null
+      selectionEnd = null
+      isSelecting = false
+    } else {
+      // Show translation panel when entering OCR mode
+      showTranslationPanel = true
+    }
+  }
+
+  function handleMouseDown(event: MouseEvent) {
+    if (!ocrMode || !imageElement) return
+    
+    const rect = imageElement.getBoundingClientRect()
+    const x = (event.clientX - rect.left) / zoomLevel
+    const y = (event.clientY - rect.top) / zoomLevel
+    
+    isSelecting = true
+    selectionStart = { x, y }
+    selectionEnd = { x, y }
+  }
+
+  function handleMouseMove(event: MouseEvent) {
+    if (!ocrMode || !isSelecting || !selectionStart || !imageElement) return
+    
+    const rect = imageElement.getBoundingClientRect()
+    const x = (event.clientX - rect.left) / zoomLevel
+    const y = (event.clientY - rect.top) / zoomLevel
+    
+    selectionEnd = { x, y }
+  }
+
+  async function handleMouseUp(event: MouseEvent) {
+    if (!ocrMode || !isSelecting || !selectionStart || !selectionEnd || !imageElement || !currentPage) return
+    
+    isSelecting = false
+    
+    // Calculate normalized coordinates relative to actual image dimensions
+    const rect = imageElement.getBoundingClientRect()
+    const unscaledWidth = rect.width / zoomLevel
+    const unscaledHeight = rect.height / zoomLevel
+    
+    const scaleX = imageElement.naturalWidth / unscaledWidth
+    const scaleY = imageElement.naturalHeight / unscaledHeight
+    
+    // Get selection coordinates (normalize to top-left corner)
+    const x1 = Math.min(selectionStart.x, selectionEnd.x)
+    const y1 = Math.min(selectionStart.y, selectionEnd.y)
+    const x2 = Math.max(selectionStart.x, selectionEnd.x)
+    const y2 = Math.max(selectionStart.y, selectionEnd.y)
+    
+    const width = x2 - x1
+    const height = y2 - y1
+    
+    console.log('Selected area:', { x1, y1, width, height })
+
+    // Ignore very small selections (likely accidental clicks)
+    if (width < 10 || height < 10) {
+      selectionStart = null
+      selectionEnd = null
+      return
+    }
+    
+    // Convert to actual image coordinates
+    const actualX = Math.round(x1 * scaleX)
+    const actualY = Math.round(y1 * scaleY)
+    const actualWidth = Math.round(width * scaleX)
+    const actualHeight = Math.round(height * scaleY)
+    
+    try {
+      ocrLoading = true
+      translationResult = await apiClient.processOcr({
+        manga_id: manga.id,
+        chapter_id: chapter.id,
+        page_id: currentPage.id,
+        x: actualX,
+        y: actualY,
+        width: actualWidth,
+        height: actualHeight
+      })
+    } catch (error) {
+      console.error('OCR processing failed:', error)
+      translationResult = {
+        original: '',
+        reading: '',
+        translation: 'Failed to process OCR request',
+        kanji_breakdown: [],
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    } finally {
+      ocrLoading = false
+    }
+  }
+
   // Controls visibility
   function showControlsTemporarily() {
     showControls = true
@@ -154,6 +273,24 @@
 
   // Keyboard navigation
   function handleKeydown(event: KeyboardEvent) {
+    // Handle OCR mode toggle and exit
+    if (event.key === 'o' || event.key === 'O') {
+      event.preventDefault()
+      toggleOcrMode()
+      return
+    }
+    
+    if (event.key === 'Escape') {
+      if (ocrMode) {
+        event.preventDefault()
+        toggleOcrMode()
+        return
+      }
+      // Otherwise, exit to manga list (handled below)
+    }
+    
+    if (ocrMode) return // Disable other shortcuts in OCR mode
+    
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault()
@@ -208,6 +345,9 @@
 
   // Mouse/touch navigation
   function handleImageClick(event: MouseEvent) {
+    // Don't navigate in OCR mode
+    if (ocrMode) return
+    
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
     const x = event.clientX - rect.left
     const clickPosition = x / rect.width
@@ -265,34 +405,53 @@
   <meta name="description" content="Reading {manga.title} Chapter {chapter.chapter_number}" />
 </svelte:head>
 
-<div class="fixed inset-0 bg-black text-white overflow-hidden" class:reading-rtl={readingDirection === 'rtl'}>
+<svelte:window 
+  on:mousemove={handleMouseMove} 
+  on:mouseup={handleMouseUp} 
+/>
+
+<div class="fixed inset-0 bg-black text-white overflow-hidden" class:reading-rtl={readingDirection === 'rtl'} class:ocr-active={ocrMode}>
   <!-- Page container -->
   <div 
     bind:this={pageContainer}
     class="h-full flex items-center justify-center overflow-auto"
+    class:cursor-crosshair={ocrMode}
+    class:cursor-pointer={!ocrMode}
     on:click={handleImageClick}
     on:keydown={(e) => e.key === 'Enter' && handleImageClick(e as any)}
     role="button"
     tabindex="0"
-    aria-label="Manga page - click left/right to navigate"
+    aria-label={ocrMode ? "OCR mode - select text area" : "Manga page - click left or right to navigate"}
   >
-    {#if currentPage}
-      <img
-        src={getPageImageUrl(currentPage)}
-        alt="Page {currentPageIndex + 1}"
-        class="manga-page max-w-full max-h-full transition-transform duration-200"
-        style="transform: scale({zoomLevel})"
-        loading="lazy"
-        on:load={() => pageLoading = false}
-        on:loadstart={() => pageLoading = true}
-      />
-    {/if}
+    <div class="relative inline-block transition-transform duration-200" style="transform: scale({zoomLevel})">
+      {#if currentPage}
+        <img
+          bind:this={imageElement}
+          src={getPageImageUrl(currentPage)}
+          alt="Page {currentPageIndex + 1}"
+          class="manga-page max-w-full max-h-full"
+          draggable={!ocrMode}
+          loading="lazy"
+          on:load={() => pageLoading = false}
+          on:loadstart={() => pageLoading = true}
+          on:mousedown={handleMouseDown}
+        />
+        
+        <!-- Selection rectangle overlay -->
+        {#if selectionRect}
+          <div 
+            class="absolute border-2 border-blue-500 bg-blue-500/20 pointer-events-none"
+            style={selectionStyle}
+          ></div>
+        {/if}
+      {/if}
 
-    {#if pageLoading}
-      <div class="absolute inset-0 flex items-center justify-center bg-black/50">
-        <LoadingSpinner message="Loading page..." />
-      </div>
-    {/if}
+      {#if pageLoading}
+        <div class="absolute inset-0 flex items-center justify-center bg-black/50">
+          <LoadingSpinner message="Loading page..." />
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- Navigation controls -->
@@ -327,6 +486,18 @@
         </div>
 
         <div class="flex items-center space-x-2">
+          <!-- OCR mode toggle -->
+          <button
+            on:click={toggleOcrMode}
+            class="p-2 rounded transition-colors {ocrMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-white/20 hover:bg-white/30'}"
+            title="Toggle OCR mode (O)"
+            aria-label="Toggle OCR mode"
+          >
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+            </svg>
+          </button>
+
           <!-- Reading direction toggle -->
           <button
             on:click={toggleReadingDirection}
@@ -450,11 +621,19 @@
   </div>
 
   <!-- Keyboard shortcuts help -->
-  <div class="fixed bottom-4 right-4 text-xs text-white/60 pointer-events-none">
+  <div class="fixed bottom-4 right-4 text-xs text-white/60 pointer-events-none" class:right-[25rem]={showTranslationPanel && ocrMode}>
     <div>← → Arrow keys or click to navigate</div>
     <div>F: Toggle controls • R: Reading direction</div>
-    <div>+/-: Zoom • ESC: Exit</div>
+    <div>O: OCR mode • +/-: Zoom • ESC: Exit</div>
   </div>
+  
+  <!-- Translation Panel -->
+  <TranslationPanel 
+    bind:visible={showTranslationPanel}
+    translation={translationResult}
+    loading={ocrLoading}
+    on:close={() => { showTranslationPanel = false; ocrMode = false }}
+  />
 </div>
 
 <style>
@@ -465,5 +644,17 @@
 
   .reading-rtl {
     direction: rtl;
+  }
+  
+  .ocr-active {
+    user-select: none;
+  }
+  
+  .cursor-crosshair {
+    cursor: crosshair;
+  }
+  
+  .cursor-pointer {
+    cursor: pointer;
   }
 </style>

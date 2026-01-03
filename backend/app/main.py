@@ -11,6 +11,7 @@ from app.api.manga import router as manga_router
 from app.api.progress import router as progress_router
 from app.api.images import router as images_router
 from app.api.preferences import router as preferences_router
+from app.api.ocr import router as ocr_router
 
 
 @asynccontextmanager
@@ -52,6 +53,7 @@ app.include_router(manga_router, prefix="/api/manga", tags=["Manga"])
 app.include_router(progress_router, prefix="/api/progress", tags=["Progress"])
 app.include_router(images_router, prefix="/api/images", tags=["Images"])
 app.include_router(preferences_router, prefix="/api/preferences", tags=["User Preferences"])
+app.include_router(ocr_router, prefix="/api/ocr", tags=["OCR & Translation"])
 
 # Serve static files for covers and cached images
 if os.path.exists(settings.IMAGE_CACHE_DIR):

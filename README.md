@@ -12,6 +12,7 @@ A modern, responsive manga reader web application built with FastAPI backend and
 - 🖼️ **Smart Optimization**: Server-side image optimization without modifying originals
 - 🎨 **Modern UI**: Built with ShadCN components and TailwindCSS
 - 📋 **Metadata Support**: Optional manga information and cover images
+- 🔤 **OCR & Translation**: Select text on manga pages to get instant Japanese-to-English translations with kanji breakdown
 
 ## Folder Structure
 
@@ -71,6 +72,9 @@ manga/
 - Python 3.9+
 - Node.js 18+
 - pnpm (recommended) or npm
+- **For OCR Translation**: Either Ollama (local) or OpenRouter API key (cloud)
+  - Ollama: [Install from ollama.ai](https://ollama.ai)
+  - OpenRouter: [Get API key from openrouter.ai](https://openrouter.ai)
 
 ### Backend Setup
 ```bash
@@ -85,6 +89,48 @@ cd frontend
 pnpm install
 pnpm dev
 ```
+
+### OCR Translation Setup (Optional)
+To enable the OCR translation feature for Japanese manga, you have two options:
+
+#### Option 1: Ollama (Local, Free)
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Pull a Japanese-capable model:
+   ```bash
+   ollama pull llama3
+   ```
+3. Start Ollama (if not already running):
+   ```bash
+   ollama serve
+   ```
+4. Configure in `config/settings.json`:
+   ```json
+   {
+     "ocr": {
+       "translation_provider": "ollama",
+       "ollama_host": "http://localhost:11434",
+       "ollama_model": "llama3"
+     }
+   }
+   ```
+
+#### Option 2: OpenRouter (Cloud, Requires API Key)
+1. Get an API key from [openrouter.ai](https://openrouter.ai)
+2. Configure in `config/settings.json`:
+   ```json
+   {
+     "ocr": {
+       "translation_provider": "openrouter",
+       "openrouter_api_key": "sk-or-v1-...",
+       "openrouter_model": "anthropic/claude-3.5-sonnet"
+     }
+   }
+   ```
+
+**Note**: You can also set these via environment variables:
+- `TRANSLATION_PROVIDER=openrouter`
+- `OPENROUTER_API_KEY=sk-or-v1-...`
+- `OPENROUTER_MODEL=anthropic/claude-3.5-sonnet`
 
 ### Configuration
 1. Copy `config/settings.example.json` to `config/settings.json`
@@ -112,8 +158,33 @@ pnpm dev
 - `GET /api/manga/{id}/chapters` - List chapters
 - `POST /api/auth/login` - User authentication
 - `GET /api/progress` - Reading progress
+- `POST /api/ocr/process` - Process OCR and translation request
 
 Full API documentation available at `/docs` when running the backend.
+
+## Using the OCR Translation Feature
+
+The OCR translation feature helps you learn Japanese while reading manga:
+
+1. **Open a manga chapter** in the reader
+2. **Press 'O' key** or click the OCR button in the top toolbar to activate OCR mode
+3. **Select text** by clicking and dragging a rectangle around Japanese text on the page
+4. **View translation** in the side panel that appears, including:
+   - Original Japanese text
+   - Hiragana reading
+   - English translation
+   - Kanji character breakdown with individual meanings
+   - Cultural notes (when applicable)
+
+### Keyboard Shortcuts
+
+- **O**: Toggle OCR mode
+- **ESC**: Exit OCR mode or return to manga list
+- **← / →**: Navigate between pages
+- **F**: Toggle UI controls
+- **R**: Switch reading direction
+- **+/-**: Zoom in/out
+- **0**: Reset zoom
 
 ## Contributing
 

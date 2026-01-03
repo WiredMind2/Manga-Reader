@@ -15,10 +15,12 @@ pydantic[email]
 pydantic-settings
 asyncpg
 psycopg2-binary
+manga-ocr
+ollama
+httpx
 
 # Testing dependencies
 pytest
 pytest-asyncio
 pytest-cov
-httpx
 factory-boy
