@@ -15,6 +15,7 @@ pydantic[email]
 pydantic-settings
 asyncpg
 psycopg2-binary
+ollama
 
 # Testing dependencies
 pytest

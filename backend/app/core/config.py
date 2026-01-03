@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
+    
+    # OCR/Translation with Ollama
+    OLLAMA_ENABLED: bool = False
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-vl:7b"
+    OLLAMA_TIMEOUT: int = 60  # seconds
 
     class Config:
         env_file = ".env"
@@ -78,7 +84,11 @@ class Settings(BaseSettings):
                     "default_reading_direction": "DEFAULT_READING_DIRECTION",
                     "cors_origins": "CORS_ORIGINS",
                     "pagination.default_page_size": "DEFAULT_PAGE_SIZE",
-                    "pagination.max_page_size": "MAX_PAGE_SIZE"
+                    "pagination.max_page_size": "MAX_PAGE_SIZE",
+                    "ollama.enabled": "OLLAMA_ENABLED",
+                    "ollama.base_url": "OLLAMA_BASE_URL",
+                    "ollama.model": "OLLAMA_MODEL",
+                    "ollama.timeout": "OLLAMA_TIMEOUT"
                 }
                 
                 for config_key, attr_name in mapping.items():
