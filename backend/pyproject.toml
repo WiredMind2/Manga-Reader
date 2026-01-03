@@ -35,3 +35,12 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError"
 ]
+
+[tool.mypy]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+ignore_missing_imports = true
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_ignores = false
+no_implicit_optional = false
+check_untyped_defs = false
