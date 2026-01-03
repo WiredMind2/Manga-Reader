@@ -486,11 +486,7 @@
           <!-- OCR mode toggle -->
           <button
             on:click={toggleOcrMode}
-            class="p-2 rounded transition-colors"
-            class:bg-blue-600={ocrMode}
-            class:hover:bg-blue-700={ocrMode}
-            class:bg-white/20={!ocrMode}
-            class:hover:bg-white/30={!ocrMode}
+            class="p-2 rounded transition-colors {ocrMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-white/20 hover:bg-white/30'}"
             title="Toggle OCR mode (O)"
             aria-label="Toggle OCR mode"
           >
